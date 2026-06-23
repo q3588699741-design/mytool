@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="开奖特征自动统计工具", layout="wide")
-st.title("📊 开奖记录序列特征自动统计与推荐工具 (5码精选版)")
+st.title("📊 开奖记录序列特征自动统计与推荐工具 (通用兼容版)")
 st.caption("支持一键上传最新的中奖记录表格，全自动双重概率池对齐交叉预测")
 
 # 1. 配置文件上传组件
@@ -15,7 +15,11 @@ if uploaded_file is not None:
     if uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, header=None)
     else:
-        df = pd.read_excel(uploaded_file, header=None)
+        try:
+            df = pd.read_excel(uploaded_file, header=None)
+        except ImportError:
+            st.error("❌ 检查到您的电脑缺少 Excel 解析组件，请在终端/命令行运行：`pip install openpyxl` 后重新启动程序。")
+            st.stop()
     
     # 清洗并解析数据 (默认第一列为号码，第二列为生肖)
     df = df.dropna()
@@ -81,7 +85,7 @@ if uploaded_file is not None:
             
         with col1:
             st.subheader("🔢 1. 尾数 0-9 后各尾数完整概率分布")
-            st.dataframe(pd.DataFrame(tail_table_data), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(tail_table_data), use_container_width=True)
 
         # --- 模块二：生肖概率计算 ---
         zodiac_table_data = []
@@ -108,7 +112,7 @@ if uploaded_file is not None:
             
         with col2:
             st.subheader("🔮 2. 各生肖后各生肖完整概率分布")
-            st.dataframe(pd.DataFrame(zodiac_table_data), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(zodiac_table_data), use_container_width=True)
 
         # --- 模块三：自动交叉对齐号码推荐 ---
         st.write("---")
@@ -134,20 +138,31 @@ if uploaded_file is not None:
             n_tail = n % 10
             n_zodiac = get_zodiac_of_number(n)
             
-            # 获取当前号码对应的下期尾数和生肖在历史中的实际开出次数
             t_count = tail_transitions[last_tail].count(n_tail)
             z_count = zodiac_transitions[last_zodiac].count(n_zodiac)
             
-            # 联合热度得分 = 尾数频次 * 生肖频次
             combined_score = t_count * z_count
             number_scores.append((n, combined_score))
             
         # 根据模式筛选号码
         matched_numbers = []
         if "精选模式" in predict_mode:
-            # 按综合得分从大到小排序
             number_scores.sort(key=lambda x: (-x[1], x[0]))
-            # 强行截取前 5 个最高分的号码
             top_5 = number_scores[:5]
-            # 把这5个号码提取出来并从小到大对号码数字排序
-            matched_numbers = [f"{item[0]:02d}" for item in top_
+            matched_numbers = [f"{item[0]:02d}" for item in top_5]
+            matched_numbers.sort()
+            mode_title = "精选模式（联合热度最高的前 5 码）"
+        else:
+            matched_numbers = [f"{item[0]:02d}" for item in number_scores if item[1] > 0]
+            matched_numbers.sort()
+            mode_title = "容错模式（所有曾经出现过的组合）"
+        
+        # 格式化输出
+        if matched_numbers:
+            st.success(f"🏁 **最终筛选：【{mode_title}】共为您选出 {len(matched_numbers)} 个号码（已按顺序排列）**")
+            st.markdown("👇 **请点击下方代码框右上角的图标，即可一键复制全部号码：**")
+            
+            copy_string = ", ".join(matched_numbers)
+            st.code(copy_string, language="text")
+        else:
+            st.warning("⚠️ 提示：没有匹配的号码。")
