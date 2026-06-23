@@ -1,135 +1,167 @@
 import streamlit as st
 import pandas as pd
+from collections import defaultdict
 
-# 页面基础配置 (手机自适应屏幕)
-st.set_page_config(page_title="2026大盘量化操盘系统", layout="wide")
-st.title("🦅 2026 大盘量化操盘系统 (AND/OR 二合一双阵型版)")
-st.caption("核心战略：只吃当年局部热浪 | 兼顾【突击高盈亏比】与【四天一收网稳健复利】")
+# 页面基础配置
+st.set_page_config(page_title="开奖特征自动统计工具", layout="wide")
+st.title("📊 开奖记录序列特征自动统计与推荐工具")
+st.caption("支持一键上传最新的中奖记录表格，全自动双重概率池对齐交叉预测")
 
-# 锁死 2026 马年核心生肖字典
-ZODIAC_NUMBERS_2026 = {
-    '马': [1, 13, 25, 37, 49], '蛇': [2, 14, 26, 38], '龙': [3, 15, 27, 39],
-    '兔': [4, 16, 28, 40], '虎': [5, 17, 29, 41], '牛': [6, 18, 30, 42],
-    '鼠': [7, 19, 31, 43], '猪': [8, 20, 32, 44], '狗': [9, 21, 33, 45],
-    '鸡': [10, 22, 34, 46], '猴': [11, 23, 35, 47], '羊': [12, 24, 36, 48]
-}
-
-def get_zodiac_by_num(num):
-    for zod, nums in ZODIAC_NUMBERS_2026.items():
-        if num in nums:
-            return zod
-    return None
-
-def get_top_n_with_ties(series, n=6):
-    counts = series.value_counts()
-    if len(counts) <= n:
-        return list(counts.index), counts.to_dict()
-    threshold = counts.iloc[n-1]
-    allowed = list(counts[counts >= threshold].index)
-    return allowed, counts.to_dict()
-
-st.markdown("### 🕹️ 核心战术指挥部")
-mode = st.radio("请选择今晚操盘布阵模式：", ["⚔️ AND 铁血尖刀流 (每天投·高盈亏比)", "📊 OR 权重得分流 (四天一收网·稳健版)"])
-
-target_count = 40
-if mode == "📊 OR 权重得分流 (四天一收网·稳健版)":
-    target_count = st.slider("🎯 OR盘目标控码数 (默认40码)", min_value=30, max_value=45, value=40, step=1)
-
-st.markdown("---")
-
-uploaded_file = st.file_uploader("📥 请在手机端上传最新的《2026开奖更新.xlsx》", type=["xlsx", "csv"])
+# 1. 配置文件上传组件
+uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
 
 if uploaded_file is not None:
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file, header=None)
-        else:
-            df = pd.read_excel(uploaded_file, header=None)
+    # 2. 自动兼容读取 CSV 或 Excel
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file, header=None)
+    else:
+        df = pd.read_excel(uploaded_file, header=None)
+    
+    # 清洗并解析数据 (默认第一列为号码，第二列为生肖)
+    df = df.dropna()
+    parsed_data = []
+    for idx, row in df.iterrows():
+        try:
+            num = int(row[0])
+            zodiac = str(row[1]).strip()
+            parsed_data.append((num, zodiac))
+        except:
+            continue
             
-        df.columns = ['number', 'zodiac']
-        df['tail'] = df['number'] % 10
+    if len(parsed_data) < 2:
+        st.error("❌ 表格内有效数据行数不足，无法进行前后行规律统计！")
+    else:
+        # 定义全局标准集合
+        all_tails = list(range(10))
+        all_zodiacs = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
         
-        df['next_tail'] = df['tail'].shift(-1)
-        df['next_zodiac'] = df['zodiac'].shift(-1)
-        df_clean = df.dropna().copy()
-        df_clean['next_tail'] = df_clean['next_tail'].astype(int)
+        # 2026年岁次丙午马年 1-49 号码生肖对照基准 (1=马, 2=蛇, 3=龙...)
+        base_zodiacs = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊']
+        def get_zodiac_of_number(n):
+            return base_zodiacs[(n - 1) % 12]
+
+        # 3. 核心统计逻辑：前后行状态转移
+        tail_transitions = defaultdict(list)
+        zodiac_transitions = defaultdict(list)
         
-        tails_map = {}
-        tails_freq_raw = {}
-        for t in range(10):
-            allowed, freq_dict = get_top_n_with_ties(df_clean[df_clean['tail'] == t]['next_tail'], 6)
-            tails_map[t] = allowed
-            tails_freq_raw[t] = freq_dict
+        for i in range(len(parsed_data) - 1):
+            curr_tail = parsed_data[i][0] % 10
+            next_tail = parsed_data[i+1][0] % 10
+            tail_transitions[curr_tail].append(next_tail)
             
-        zodiacs_map = {}
-        zodiacs_freq_raw = {}
-        for z in ZODIAC_NUMBERS_2026.keys():
-            allowed, freq_dict = get_top_n_with_ties(df_clean[df_clean['zodiac'] == z]['next_zodiac'], 6)
-            zodiacs_map[z] = allowed
-            zodiacs_freq_raw[z] = freq_dict
+            curr_zodiac = parsed_data[i][1]
+            next_zodiac = parsed_data[i+1][1]
+            zodiac_transitions[curr_zodiac].append(next_zodiac)
             
-        last_row = df.iloc[-1]
-        last_num = int(last_row['number'])
-        last_zodiac = last_row['zodiac']
-        last_tail = int(last_row['tail'])
+        # 创建两列布局展示完整分布表
+        col1, col2 = st.columns(2)
         
-        st.markdown(f"📍 当前最新大盘坐标：上期开出 **{last_num:02d} ({last_zodiac})**")
-        
-        allowed_t = tails_map[last_tail]
-        allowed_z = zodiacs_map[last_zodiac]
-        
-        if mode == "⚔️ AND 铁血尖刀流 (每天投·高盈亏比)":
-            final_numbers = []
-            for num in range(1, 50):
-                t = num % 10
-                z = get_zodiac_by_num(num)
-                if (t in allowed_t) and (z in allowed_z):
-                    final_numbers.append(f"{num:02d}")
+        # --- 模块一：尾数概率计算 ---
+        best_tail_pred = {}
+        tail_table_data = []
+        for tail in range(10):
+            nexts = tail_transitions[tail]
+            total = len(nexts)
+            counts = defaultdict(int)
+            for n in nexts:
+                counts[n] += 1
             
-            st.success(f"🔥 今晚 AND 阵型火力全开！共筛出 **{len(final_numbers)}** 个精尖特码：")
-            st.code(", ".join(sorted(final_numbers)), language="text")
-            st.info("💡 战术提示：此模式号码极度压缩（如今天仅 15 码），错一次亏得极少，中一次利润翻倍，适合日投碎单。")
+            # 记录最大频次的尾数作为预测候选池
+            max_count = max(counts.values()) if counts else 0
+            best_tail_pred[tail] = [t for t, c in counts.items() if c == max_count] if counts else []
             
-        else:
-            freq_t_dict = tails_freq_raw[last_tail]
-            freq_z_dict = zodiacs_freq_raw[last_zodiac]
+            prob_parts = []
+            for t in all_tails:
+                cnt = counts[t]
+                prob = (cnt / total * 100) if total > 0 else 0.0
+                prob_parts.append((t, cnt, prob))
+            # 降序排列
+            prob_parts.sort(key=lambda x: (-x[1], x[0]))
+            prob_str = ", ".join([f"{t}尾: {p:.1f}%({c}次)" for t, c, p in prob_parts])
             
-            qualified_pool = []
-            for num in range(1, 50):
-                t = num % 10
-                z = get_zodiac_by_num(num)
+            tail_table_data.append({
+                "当前尾数": f"{tail}尾",
+                "历史出现总计": f"{total}次",
+                "下一行尾数完整分布 (降序排列)": prob_str
+            })
+            
+        with col1:
+            st.subheader("🔢 1. 尾数 0-9 后各尾数完整概率分布")
+            st.dataframe(pd.DataFrame(tail_table_data), use_container_width=True, hide_index=True)
+
+        # --- 模块二：生肖概率计算 ---
+        best_zodiac_pred = {}
+        zodiac_table_data = []
+        for zodiac in all_zodiacs:
+            nexts = zodiac_transitions[zodiac]
+            total = len(nexts)
+            counts = defaultdict(int)
+            for n in nexts:
+                counts[n] += 1
                 
-                if (t in allowed_t) or (z in allowed_z):
-                    score_tail = freq_t_dict.get(t, 0)
-                    score_zodiac = freq_z_dict.get(z, 0)
-                    total_score = score_tail + score_zodiac
-                    identity = "双项全能 (AND)" if (t in allowed_t and z in allowed_z) else "单腿支撑 (OR)"
-                    
-                    qualified_pool.append({
-                        "号码": f"{num:02d}",
-                        "生肖": z,
-                        "尾数": t,
-                        "🔥 综合战功总得分": total_score,
-                        "血统标签": identity
-                    })
+            # 记录最大频次的生肖作为预测候选池
+            max_count = max(counts.values()) if counts else 0
+            best_zodiac_pred[zodiac] = [z for z, c in counts.items() if c == max_count] if counts else []
             
-            pool_df = pd.DataFrame(qualified_pool)
-            pool_df = pool_df.sort_values(by=["🔥 综合战功总得分", "号码"], ascending=[False, True]).reset_index(drop=True)
+            prob_parts = []
+            for z in all_zodiacs:
+                cnt = counts[z]
+                prob = (cnt / total * 100) if total > 0 else 0.0
+                prob_parts.append((z, cnt, prob))
+            # 降序排列
+            prob_parts.sort(key=lambda x: (-x[1], all_zodiacs.index(x[0])))
+            prob_str = ", ".join([f"{z}: {p:.1f}%({c}次)" for z, c, p in prob_parts])
             
-            final_elite_df = pool_df.head(target_count)
-            final_numbers_list = sorted(final_elite_df["号码"].tolist())
+            zodiac_table_data.append({
+                "当前生肖": zodiac,
+                "历史出现总计": f"{total}次",
+                "下一行生肖完整分布 (降序排列)": prob_str
+            })
             
-            st.success(f"🎯 今晚 OR 权重阵型已就位！精准截取前 **{target_count}** 个黄金高分码：")
-            st.code(", ".join(final_numbers_list), language="text")
-            st.info(f"💡 战术提示：专为【四天一收网】深度定制。留下的这 {target_count} 码具备极高防御力，中奖即赚绝对净剩余！")
+        with col2:
+            st.subheader("🔮 2. 各生肖后各生肖完整概率分布")
+            st.dataframe(pd.DataFrame(zodiac_table_data), use_container_width=True, hide_index=True)
+
+        # --- 模块三：自动交叉对齐号码推荐 ---
+        st.write("---")
+        st.subheader("🎯 3. 下期精准双条件重合号码预测")
+        
+        # 获取表格里最后一期的最新开奖数据
+        last_num, last_zodiac = parsed_data[-1]
+        last_tail = last_num % 10
+        
+        st.markdown(f"📋 **检测到表格最新一期结果**：号码为 `**{last_num}**` ，生肖为 `**{last_zodiac}**`（尾数为 `{last_tail}`）")
+        
+        # 提取高频池
+        target_tails = best_tail_pred.get(last_tail, [])
+        target_zodiacs = best_zodiac_pred.get(last_zodiac, [])
+        
+        # 渲染预测依据提示
+        tail_tips = "、".join([f"{t}尾" for t in target_tails])
+        zodiac_tips = "、".join(target_zodiacs)
+        
+        p_col1, p_col2 = st.columns(2)
+        p_col1.info(f"💡 依据历史转换：**{last_tail}尾** 下期高频推荐开出 → **{tail_tips}**")
+        p_col2.info(f"💡 依据历史转换：**{last_zodiac}** 下期高频推荐开出 → **{zodiac_tips}**")
+        
+        # 扫描 1-49 号码库，找出同时具备高频尾数和高频生肖的号码
+        matched_numbers = []
+        for n in range(1, 50):
+            n_tail = n % 10
+            n_zodiac = get_zodiac_of_number(n)
             
-            with st.expander("📊 查看今晚全量号码战功得分大排队详情"):
-                def color_row(row):
-                    if row.name < target_count:
-                        return ['background-color: rgba(40, 167, 69, 0.1)'] * len(row)
-                    else:
-                        return ['background-color: rgba(220, 53, 69, 0.1); color: gray; text-decoration: line-through'] * len(row)
-                st.dataframe(pool_df.style.apply(color_row, axis=1), use_container_width=True)
-                
-    except Exception as e:
-        st.error(f"💥 账本解析失败，错误原因: {str(e)}")
+            if (n_tail in target_tails) and (n_zodiac in target_zodiacs):
+                matched_numbers.append(f"{n:02d}({n_zodiac})")
+        
+        # 打印最终筛选出的推荐号码结果
+        if matched_numbers:
+            st.success(f"🏁 **最终筛选结果：同时满足上述两个最高概率分布的号码共 {len(matched_numbers)} 个**")
+            # 用醒目的区块把号码排列展示
+            st.markdown(
+                f"<div style='background-color:#f0f2f6; padding:15px; border-radius:10px; font-size:24px; font-weight:bold; color:#ff4b4b; text-align:center; letter-spacing: 5px;'>"
+                f"{' ｜ '.join(matched_numbers)}"
+                f"</div>", 
+                unsafe_allow_html=True
+            )
+        else:
+            st.warning("⚠️ 提示：当前两项最高概率条件没有重合的单个号码，你可以适当通过上方图表参考第二高频的特征做手动扩充。")
