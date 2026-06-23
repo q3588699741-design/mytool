@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="开奖特征自动统计工具", layout="wide")
-st.title("📊 开奖记录序列特征自动统计与推荐工具 (通用兼容版)")
+st.title("📊 开奖记录序列特征自动统计与推荐工具 (全显兼容版)")
 st.caption("支持一键上传最新的中奖记录表格，全自动双重概率池对齐交叉预测")
 
 # 1. 配置文件上传组件
@@ -85,7 +85,8 @@ if uploaded_file is not None:
             
         with col1:
             st.subheader("🔢 1. 尾数 0-9 后各尾数完整概率分布")
-            st.dataframe(pd.DataFrame(tail_table_data), use_container_width=True)
+            # 🌟 核心修正：使用 st.table 替换 st.dataframe，强制文字自动换行全显
+            st.table(pd.DataFrame(tail_table_data))
 
         # --- 模块二：生肖概率计算 ---
         zodiac_table_data = []
@@ -112,7 +113,8 @@ if uploaded_file is not None:
             
         with col2:
             st.subheader("🔮 2. 各生肖后各生肖完整概率分布")
-            st.dataframe(pd.DataFrame(zodiac_table_data), use_container_width=True)
+            # 🌟 核心修正：使用 st.table 替换 st.dataframe，强制文字自动换行全显
+            st.table(pd.DataFrame(zodiac_table_data))
 
         # --- 模块三：自动交叉对齐号码推荐 ---
         st.write("---")
