@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="开奖历史数据统计工具", layout="wide")
-st.title("📊 开奖记录序列特征全量统计工具 (纯净对齐版)")
+st.title("📊 序列特征全量统计工具 (纯净对齐版)")
 st.caption("专注前后行状态转移统计 ｜ 规整对齐 ｜ 全量不遮挡")
 
 # 1. 配置文件上传组件
