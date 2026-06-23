@@ -130,7 +130,7 @@ if uploaded_file is not None:
         last_num, last_zodiac = parsed_data[-1]
         last_tail = last_num % 10
         
-        st.markdown(f"📋 **检测到表格最新一期结果**：号码为 `**{last_num}**` ，生肖为 `**{last_zodiac}**`（尾数为 `{last_tail}`）")
+        st.markdown(f"📋 **检测到最新一期（即表格最后一行）**：号码为 `**{last_num}**` ，生肖为 `**{last_zodiac}**`（尾数为 `{last_tail}`）")
         
         # 提取高频池
         target_tails = best_tail_pred.get(last_tail, [])
@@ -141,27 +141,27 @@ if uploaded_file is not None:
         zodiac_tips = "、".join(target_zodiacs)
         
         p_col1, p_col2 = st.columns(2)
-        p_col1.info(f"💡 依据历史转换：**{last_tail}尾** 下期高频推荐开出 → **{tail_tips}**")
-        p_col2.info(f"💡 依据历史转换：**{last_zodiac}** 下期高频推荐开出 → **{zodiac_tips}**")
+        p_col1.info(f"💡 依据历史转换：**{last_tail}尾** 下期高频开出 → **{tail_tips}**")
+        p_col2.info(f"💡 依据历史转换：**{last_zodiac}** 下期高频开出 → **{zodiac_tips}**")
         
-        # 扫描 1-49 号码库，找出同时具备高频尾数和高频生肖的号码
+        # 扫描 1-49 号码库（天然按从小到大顺序循环）
         matched_numbers = []
         for n in range(1, 50):
             n_tail = n % 10
             n_zodiac = get_zodiac_of_number(n)
             
+            # 同时符合两个池子
             if (n_tail in target_tails) and (n_zodiac in target_zodiacs):
-                matched_numbers.append(f"{n:02d}({n_zodiac})")
+                matched_numbers.append(f"{n:02d}")
         
-        # 打印最终筛选出的推荐号码结果
+        # 格式化输出
         if matched_numbers:
-            st.success(f"🏁 **最终筛选结果：同时满足上述两个最高概率分布的号码共 {len(matched_numbers)} 个**")
-            # 用醒目的区块把号码排列展示
-            st.markdown(
-                f"<div style='background-color:#f0f2f6; padding:15px; border-radius:10px; font-size:24px; font-weight:bold; color:#ff4b4b; text-align:center; letter-spacing: 5px;'>"
-                f"{' ｜ '.join(matched_numbers)}"
-                f"</div>", 
-                unsafe_allow_html=True
-            )
+            st.success(f"🏁 **最终筛选：同时满足上面两项最高概率条件的号码共 {len(matched_numbers)} 个（已按从小到大排序）**")
+            st.markdown("👇 **请点击下方代码框右上角的复制图标，即可一键复制全部号码：**")
+            
+            # 将号码用逗号隔开组合在一起，方便各种场景的粘贴
+            copy_string = ", ".join(matched_numbers)
+            st.code(copy_string, language="text")
+            
         else:
-            st.warning("⚠️ 提示：当前两项最高概率条件没有重合的单个号码，你可以适当通过上方图表参考第二高频的特征做手动扩充。")
+            st.warning("⚠️ 提示：在当前的严格最高概率交叉下，1-49中没有刚好重合的号码。这通常是因为最高频的生肖里，刚好不包含这几个最高频的尾数。")
