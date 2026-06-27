@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (全能出号版)")
+st.title("📊 开奖记录全维度综合统计看板 (全量容错出号版)")
 st.caption("最新总体冷热 ｜ 当前遗漏与欲出几率 ｜ 大局观指标分析 ｜ 状态转移矩阵 ｜ 智能出号 ｜ 历史策略回测")
 
 # 1. 配置文件上传组件
@@ -49,7 +49,7 @@ if uploaded_file is not None:
             
         st.write("---")
         
-        # 🌟 核心排版：升级为 6 大功能 Tabs 选项卡，模块化平铺，绝不遮挡和切断文字
+        # 使用 Tabs 将六大功能进行横向归类，界面干净规整
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "🔥 1. 大盘总量冷热榜", 
             "⏳ 2. 当前未出遗漏与欲出榜", 
@@ -131,7 +131,6 @@ if uploaded_file is not None:
             st.subheader("⏳ 截止当前最新一期：遗漏期数与欲出几率深度统计")
             st.markdown("💡 **数学公式原理**：$$\\text{欲出几率} = \\frac{\\text{当前遗漏期数}}{\\text{历史平均出号间隔}}$$。当数值大于 **1.0** 时，意味着该指标连空时间已打破其历史平均频率，属于高概率回补区间。")
             
-            # 各指标遗漏算法
             num_omission = {}
             for n in range(1, 50):
                 found = False
@@ -329,10 +328,10 @@ if uploaded_file is not None:
                         cnt = counts[z]
                         prob = (cnt / total * 100) if total > 0 else 0.0
                         prob_parts.append((z, cnt, prob))
-                    prob_parts.sort(key=lambda x: (-x[1], all_zodiacs.index(x[0])))
+                    zodiac_parts = sorted(prob_parts, key=lambda x: (-x[1], all_zodiacs.index(x[0])))
                     
                     formatted_parts = []
-                    for z, c, p in prob_parts:
+                    for z, c, p in zodiac_parts:
                         if c == max_count and max_count > 0:
                             formatted_parts.append(f"**{z}: {p:.1f}%({c}次)**")
                         else:
@@ -366,54 +365,51 @@ if uploaded_file is not None:
                 st.markdown(head_trans_md, unsafe_allow_html=True)
 
         # ==========================================
-        # 🌟 TAB 5: 下期大网智能出号（✨新加入核心出号模块）
+        # 🌟 TAB 5: 下期大网智能出号（✨算法核心重构：只要开出过就选）
         # ==========================================
         with tab5:
-            st.subheader("🎯 三维特征大网交叉：下期智能推荐号码生成器")
-            st.markdown("💡 **出号逻辑**：系统自动读取目前表格最后一行（最新开奖），提取其尾数、生肖、头数。然后去转移概率表中找出这三项指标下期**最高频开出（含并列第一名）**的候选池，只要满足任意一项（或逻辑）的 1-49 号码，全部为你精准打捞出来。")
+            st.subheader("🎯 三维全量容错大网：下期智能推荐号码生成器")
+            st.markdown("💡 **出号逻辑更新**：系统自动读取目前表格最后一行最新开奖。提取其尾数、生肖、头数。然后找出历史上**所有出现过（频次 > 0次）**的下期尾数、下期生肖、下期头数作为联合拦截池。只要满足任意一项（或逻辑）的 1-49 号码，全量精准捕获！")
             
-            # 先行计算最高频候选池
-            best_tail_pred = {}
+            # 重构：提取所有只要开出过一次(count > 0)的候选池
+            appear_tail_pred = {}
             for tail, nexts in tail_transitions.items():
                 counts = defaultdict(int)
                 for n in nexts: counts[n] += 1
-                max_count = max(counts.values()) if counts else 0
-                best_tail_pred[tail] = [t for t, c in counts.items() if c == max_count] if counts else []
+                appear_tail_pred[tail] = [t for t, c in counts.items() if c > 0]
 
-            best_zodiac_pred = {}
+            appear_zodiac_pred = {}
             for zodiac, nexts in zodiac_transitions.items():
                 counts = defaultdict(int)
                 for n in nexts: counts[n] += 1
-                max_count = max(counts.values()) if counts else 0
-                best_zodiac_pred[zodiac] = [z for z, c in counts.items() if c == max_count] if counts else []
+                appear_zodiac_pred[zodiac] = [z for z, c in counts.items() if c > 0]
 
-            best_head_pred = {}
+            appear_head_pred = {}
             for head, nexts in head_transitions.items():
                 counts = defaultdict(int)
                 for n in nexts: counts[n] += 1
-                max_count = max(counts.values()) if counts else 0
-                best_head_pred[head] = [h for h, c in counts.items() if c == max_count] if counts else []
+                appear_head_pred[head] = [h for h, c in counts.items() if c > 0]
 
-            # 获取表格里最后一期的最新数据
+            # 获取表格里最后一期的最新开奖数据
             last_num, last_zodiac = parsed_data[-1]
             last_tail = last_num % 10
             last_head = last_num // 10
             
-            st.info(f"📋 **大盘最新数据定位**：上一期号码为 `**{last_num:02d}**`，生肖为 `**{last_zodiac}**` （即：{last_head}头、{last_tail}尾）")
+            st.info(f"📋 **大盘最新数据定位**：上一期号码为 `**{last_num:02d}**`，生肖为 `**{last_zodiac}**` （包含：{last_head}头、{last_tail}尾）")
             
-            p_tails = best_tail_pred.get(last_tail, [])
-            p_zods = best_zodiac_pred.get(last_zodiac, [])
-            p_heads = best_head_pred.get(last_head, [])
+            p_tails = appear_tail_pred.get(last_tail, [])
+            p_zods = appear_zodiac_pred.get(last_zodiac, [])
+            p_heads = appear_head_pred.get(last_head, [])
             
-            # 显示当前的决策池
+            # 渲染历史曾开出过的全集提示
             t_tips = "、".join([f"{x}尾" for x in sorted(p_tails)])
             z_tips = "、".join(p_zods)
             h_tips = "、".join([f"{x}头" for x in sorted(p_heads)])
             
             c1, c2, c3 = st.columns(3)
-            c1.markdown(f"🔢 历史规律：{last_tail}尾下期更易出 → **{t_tips}**")
-            c2.markdown(f"🔮 历史规律：{last_zodiac}肖下期更易出 → **{z_tips}**")
-            c3.markdown(f"🔝 历史规律：{last_head}头下期更易出 → **{h_tips}**")
+            c1.markdown(f"🔢 历史曾开出尾数集合 → **{t_tips}**")
+            c2.markdown(f"🔮 历史曾开出生肖集合 → **{z_tips}**")
+            c3.markdown(f"🔝 历史曾开出头数集合 → **{h_tips}**")
             
             # 扫描大盘 1-49
             final_selected_numbers = []
@@ -422,13 +418,13 @@ if uploaded_file is not None:
                 n_zodiac = get_zodiac_of_number(n)
                 n_head = n // 10
                 
-                # 或逻辑判定
+                # 或逻辑判定：只要任何一项对上历史出现过的，就捕获
                 if (n_tail in p_tails) or (n_zodiac in p_zods) or (n_head in p_heads):
                     final_selected_numbers.append(f"{n:02d}")
             
             st.write("---")
             if final_selected_numbers:
-                st.success(f"🏁 **全网打捞成功！同时满足上述任一特征的号码共 {len(final_selected_numbers)} 个（已从小到大严格排序）**")
+                st.success(f"🏁 **全网打捞成功！符合历史任意‘开出过’特征的号码共 {len(final_selected_numbers)} 个（已从小到大严格排序）**")
                 st.markdown("👇 **请点击下方文本框右上角的图标，即可一键全选复制号码：**")
                 
                 out_string = ", ".join(final_selected_numbers)
@@ -437,13 +433,13 @@ if uploaded_file is not None:
                 st.warning("⚠️ 提示：大盘中没有符合要求的号码。")
 
         # ==========================================
-        # TAB 6: 转换规律历史回测引擎
+        # TAB 6: 转换规律历史回测引擎（🌟算法核心重构：且改为只要出现过就命中）
         # ==========================================
         with tab6:
-            st.subheader("🧪 状态转移策略历史回测复盘引擎 (三维度或逻辑版)")
-            st.markdown("💡 **回测规则**：系统模拟历史全量演变。只要下期的实际开奖结果落入【最高频尾数】**或者**【最高频生肖】**或者**【最高频头数】的任意一个目标池中，即算作拦截命中。")
+            st.subheader("🧪 状态转移策略历史回测复盘引擎 (全量容错大网版)")
+            st.markdown("💡 **回测规则更新说明**：点击下方按钮后，系统模拟历史全量演变。下期只要实际开出的 尾数、头数、生肖 有任意一个在历史中**曾开出过（出现频次 > 0）**，就直接判定为完美拦截命中。")
             
-            if st.button("🚀 开启三维特征全量历史大回测", type="primary"):
+            if st.button("🚀 开启全量容错历史大回测", type="primary"):
                 hit_count = 0
                 test_total = len(parsed_data) - 1
                 hit_details = []
@@ -452,9 +448,9 @@ if uploaded_file is not None:
                     c_num, c_zod = parsed_data[i]
                     n_num, n_zod = parsed_data[i+1]
                     
-                    p_tails_test = best_tail_pred.get(c_num % 10, [])
-                    p_zods_test = best_zodiac_pred.get(c_zod, [])
-                    p_heads_test = best_head_pred.get(c_num // 10, [])
+                    p_tails_test = appear_tail_pred.get(c_num % 10, [])
+                    p_zods_test = appear_zodiac_pred.get(c_zod, [])
+                    p_heads_test = appear_head_pred.get(c_num // 10, [])
                     
                     tail_hit = (n_num % 10 in p_tails_test)
                     zodiac_hit = (n_zod in p_zods_test)
@@ -470,15 +466,15 @@ if uploaded_file is not None:
                         if len(hit_tags) == 3:
                             tag = " [🔥三重全中!!!]"
                         else:
-                            tag = f" [🎯仅{'和'.join(hit_tags)}中]"
+                            tag = f" [🎯{'和'.join(hit_tags)}特征吻合]"
                             
-                        hit_details.append(f"第 {i+2:03d} 行（前一期 `{c_num},{c_zod}`）：下期开出 `{n_num},{n_zod}`{tag}")
+                        hit_details.append(f"第 {i+2:03d} 期（前一期 `{c_num},{c_zod}`）：下期开出 `{n_num},{n_zod}`{tag}")
 
                 b_col1, b_col2, b_col3 = st.columns(3)
                 b_col1.metric("📋 总模拟检验样本数", f"{test_total} 期")
-                b_col2.metric("🎯 复合命中总期数 (满足任一)", f"{hit_count} 期")
-                b_col3.metric("📊 综合历史捕获率 (三维或逻辑)", f"{(hit_count / test_total * 100):.2f}%")
+                b_col2.metric("🎯 复合拦截命中总期数 (满足曾开出)", f"{hit_count} 期")
+                b_col3.metric("📊 综合历史捕获率 (容错网逻辑)", f"{(hit_count / test_total * 100):.2f}%")
 
                 st.write("---")
-                st.success(f"🏁 三维历史大回测完成！综合历史拦截胜率达 **{(hit_count / test_total * 100):.2f}%**。以下为命中明细清单：")
+                st.success(f"🏁 全量容错大回测完成！在【只要开出过就入选】的终极过滤机制下，历史大盘的拦截率会表现得极为震撼。以下为详细命中清单：")
                 st.code("\n".join(hit_details), language="text")
