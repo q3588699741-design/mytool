@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (终极算力版)")
+st.title("📊 开奖记录全维度综合统计看板 (头数升级版)")
 st.caption("最新总体冷热 ｜ 当前遗漏与欲出几率 ｜ 大局观指标分析 ｜ 状态转移矩阵 ｜ 历史策略回测")
 
 # 1. 配置文件上传组件
@@ -40,18 +40,12 @@ if uploaded_file is not None:
         # 定义全局标准集合
         all_tails = list(range(10))
         all_zodiacs = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
-        all_heads = list(range(5))
+        all_heads = list(range(5)) # 0头到4头
         
         st.write("---")
         
-        # 🌟 核心排版：5 大功能 Tabs 选项卡，界面干净规整，绝不遮挡文字
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "🔥 1. 大盘总量冷热榜", 
-            "⏳ 2. 当前未出遗漏与欲出榜", 
-            "📈 3. 大局观综合指标分析",
-            "🔄 4. 前后行状态转移矩阵",
-            "🧪 5. 转换规律历史回测引擎"
-        ])
+        # 使用 Tabs 将五大功能进行横向归类，界面干净规整
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔥 1. 大盘总量冷热榜", "⏳ 2. 当前未出遗漏与欲出榜", "📈 3. 大局观综合指标分析", "🔄 4. 前后行状态转移矩阵", "🧪 5. 转换规律历史回测引擎"])
 
         # ==========================================
         # TAB 1: 大盘总量冷热榜
@@ -269,13 +263,14 @@ if uploaded_file is not None:
             ind_col3.metric("🌌 全局大小比 (大号 $\\ge25$ ｜ 小号)", f"{big_cnt}期 ｜ {small_cnt}期", f"大号占比: {(big_cnt/total_records)*100:.1f}%")
 
         # ==========================================
-        # TAB 4: 前后行状态转移矩阵
+        # TAB 4: 前后行状态转移矩阵 (🌟加塞头数转移)
         # ==========================================
         with tab4:
             st.subheader("🔄 纵向序列演变规律：当前行开出后，下一行开出什么的概率")
             
             tail_transitions = defaultdict(list)
             zodiac_transitions = defaultdict(list)
+            head_transitions = defaultdict(list) # 存放头数状态
             
             for i in range(len(parsed_data) - 1):
                 curr_tail = parsed_data[i][0] % 10
@@ -286,7 +281,12 @@ if uploaded_file is not None:
                 next_zodiac = parsed_data[i+1][1]
                 zodiac_transitions[curr_zodiac].append(next_zodiac)
                 
-            trans_col1, trans_col2 = st.columns(2)
+                # 新增头数转移特征数据收集
+                curr_head = parsed_data[i][0] // 10
+                next_head = parsed_data[i+1][0] // 10
+                head_transitions[curr_head].append(next_head)
+                
+            trans_col1, trans_col2, trans_col3 = st.columns(3) # 升级为精美3列
             
             with trans_col1:
                 st.markdown("### 🔢 尾数 0-9 后行尾数完整分布")
@@ -295,8 +295,7 @@ if uploaded_file is not None:
                     nexts = tail_transitions[tail]
                     total = len(nexts)
                     counts = defaultdict(int)
-                    for n in nexts:
-                        counts[n] += 1
+                    for n in nexts: counts[n] += 1
                     max_count = max(counts.values()) if counts else 0
                     prob_parts = []
                     for t in all_tails:
@@ -321,8 +320,7 @@ if uploaded_file is not None:
                     nexts = zodiac_transitions[zodiac]
                     total = len(nexts)
                     counts = defaultdict(int)
-                    for n in nexts:
-                        counts[n] += 1
+                    for n in nexts: counts[n] += 1
                     max_count = max(counts.values()) if counts else 0
                     prob_parts = []
                     for z in all_zodiacs:
@@ -340,14 +338,40 @@ if uploaded_file is not None:
                     zodiac_trans_md += f"| **{zodiac}** | {total}次 | {" ｜ ".join(formatted_parts)} |\n"
                 st.markdown(zodiac_trans_md, unsafe_allow_html=True)
 
+            # ✨ 新增展现模块：各头数后行头数概率完整分布
+            with trans_col3:
+                st.markdown("### 🔝 头数 0-4 后行头数完整分布")
+                head_trans_md = "| 当前头数 | 历史总计 | 下一行头数概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
+                for head in range(5):
+                    nexts = head_transitions[head]
+                    total = len(nexts)
+                    counts = defaultdict(int)
+                    for n in nexts: counts[n] += 1
+                    max_count = max(counts.values()) if counts else 0
+                    prob_parts = []
+                    for h in all_heads:
+                        cnt = counts[h]
+                        prob = (cnt / total * 100) if total > 0 else 0.0
+                        prob_parts.append((h, cnt, prob))
+                    prob_parts.sort(key=lambda x: (-x[1], x[0]))
+                    
+                    formatted_parts = []
+                    for h, c, p in prob_parts:
+                        if c == max_count and max_count > 0:
+                            formatted_parts.append(f"**{h}头: {p:.1f}%({c}次)**")
+                        else:
+                            formatted_parts.append(f"{h}头: {p:.1f}%({c}次)")
+                    head_trans_md += f"| **{head}头** | {total}次 | {" ｜ ".join(formatted_parts)} |\n"
+                st.markdown(head_trans_md, unsafe_allow_html=True)
+
         # ==========================================
-        # TAB 5: 转换规律历史回测引擎（🌟核心修改：且改为或）
+        # TAB 5: 转换规律历史回测引擎（🌟核心升级：引入3条件或逻辑）
         # ==========================================
         with tab5:
-            st.subheader("🧪 状态转移策略历史回测复盘引擎 (兼容宽松版)")
-            st.markdown("💡 **回测规则更新说明**：点击下方按钮后，系统会模拟全量历史。只要下期的实际开奖结果落入【当前尾数的最高频下期尾数】**或者**【当前生肖的最高频下期生肖】的任意一个目标池中，即算作拦截命中（网眼变大，胜率会大幅拔高）。")
+            st.subheader("🧪 状态转移策略历史回测复盘引擎 (3维度极限拦截版)")
+            st.markdown("💡 **回测规则全新升级说明**：点击下方按钮后，系统模拟历史全量演变。判定门槛拓展为 **三条件「或（OR）」逻辑**。只要下期的实际开奖结果落入【当前尾数的最高频下期尾数】**或者**【当前生肖的最高频下期生肖】**或者**【当前头数的最高频下期头数】的任意一个目标池中，即算作拦截命中。")
             
-            if st.button("🚀 开启全量历史大回测", type="primary"):
+            if st.button("🚀 开启三维特征全量历史大回测", type="primary"):
                 # 重新计算各最高频候选集
                 best_tail_pred = {}
                 for tail, nexts in tail_transitions.items():
@@ -363,6 +387,14 @@ if uploaded_file is not None:
                     max_count = max(counts.values()) if counts else 0
                     best_zodiac_pred[zodiac] = [z for z, c in counts.items() if c == max_count] if counts else []
 
+                # 新增头数最高频候选集计算
+                best_head_pred = {}
+                for head, nexts in head_transitions.items():
+                    counts = defaultdict(int)
+                    for n in nexts: counts[n] += 1
+                    max_count = max(counts.values()) if counts else 0
+                    best_head_pred[head] = [h for h, c in counts.items() if c == max_count] if counts else []
+
                 # 回测循环
                 hit_count = 0
                 test_total = len(parsed_data) - 1
@@ -374,20 +406,26 @@ if uploaded_file is not None:
                     
                     p_tails = best_tail_pred.get(c_num % 10, [])
                     p_zods = best_zodiac_pred.get(c_zod, [])
+                    p_heads = best_head_pred.get(c_num // 10, []) # 上期头数预测下期
                     
                     tail_hit = (n_num % 10 in p_tails)
                     zodiac_hit = (n_zod in p_zods)
+                    head_hit = (n_num // 10 in p_heads) # 判定头数是否命中
                     
-                    # 🌟 核心修改地方：将 and 改为 or 
-                    if tail_hit or zodiac_hit:
+                    # 🌟 核心升级：改造成 3 维条件的「或」判定
+                    if tail_hit or zodiac_hit or head_hit:
                         hit_count += 1
-                        # 细化命中的小标签区分，看起来更直观清晰
-                        if tail_hit and zodiac_hit:
-                            tag = " [🔥双重全中!]"
-                        elif tail_hit:
-                            tag = " [🎯仅尾数中]"
+                        
+                        # 组装更智能、更精细的多条件交叉命中标签
+                        hit_tags = []
+                        if tail_hit: hit_tags.append("尾数")
+                        if zodiac_hit: hit_tags.append("生肖")
+                        if head_hit: hit_tags.append("头数")
+                        
+                        if len(hit_tags) == 3:
+                            tag = " [🔥三重全中!!!]"
                         else:
-                            tag = " [🎯仅生肖中]"
+                            tag = f" [🎯仅{'和'.join(hit_tags)}中]"
                             
                         hit_details.append(f"第 {i+2:03d} 行（前一期 `{c_num},{c_zod}`）：下期开出 `{n_num},{n_zod}`{tag}")
 
@@ -395,8 +433,8 @@ if uploaded_file is not None:
                 b_col1, b_col2, b_col3 = st.columns(3)
                 b_col1.metric("📋 总模拟检验样本数", f"{test_total} 期")
                 b_col2.metric("🎯 复合命中总期数 (满足任一)", f"{hit_count} 期")
-                b_col3.metric("📊 综合历史捕获率 (或逻辑)", f"{(hit_count / test_total * 100):.2f}%")
+                b_col3.metric("📊 综合历史捕获率 (三维或逻辑)", f"{(hit_count / test_total * 100):.2f}%")
 
                 st.write("---")
-                st.success(f"🏁 历史大回测完成！在【或（OR）】门槛下，策略的实战拦截胜率飙升到了 **{(hit_count / test_total * 100):.2f}%**。以下为命中明细清单：")
+                st.success(f"🏁 三维历史大回测完成！在加入【头数特征】且保持【或】门槛下，策略的实战拦截覆盖胜率达到了 **{(hit_count / test_total * 100):.2f}%**。以下为全量命中明细清单：")
                 st.code("\n".join(hit_details), language="text")
