@@ -5,7 +5,7 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (安全诊断双模版)")
+st.title("📊 开奖记录全维度综合统计看板 (全版本兼容修复版)")
 st.caption("最新总体冷热 ｜ 当前遗漏与欲出几率 ｜ 状态转移矩阵 ｜ 🎯固定6+6多维智能出号 ｜ 🧪历史滚动回测")
 
 # 1. 配置文件上传组件
@@ -206,7 +206,8 @@ if uploaded_file is not None:
                         prob_parts = [(t, counts[t], (counts[t]/total*100 if total>0 else 0.0)) for t in all_tails]
                         prob_parts.sort(key=lambda x: (-x[1], x[0]))
                         formatted_parts = [f"**{t}尾: {p:.1f}%({c}次)**" if c==max_count and max_count>0 else f"{t}尾: {p:.1f}%({c}次)" for t, c, p in prob_parts]
-                        tail_trans_md += f"| **{tail}尾** | {total}次 | {" ｜ ".join(formatted_parts)} |\n"
+                        # 🌟 核心修复点：将大括号内部的外部双引号改为单引号 ' ｜ '，完美避免低版本 Python 语法崩盘
+                        tail_trans_md += f"| **{tail}尾** | {total}次 | {' ｜ '.join(formatted_parts)} |\n"
                     st.markdown(tail_trans_md, unsafe_allow_html=True)
                 with trans_col2:
                     st.markdown("### 🔮 各生肖后行生肖完整分布")
@@ -220,7 +221,8 @@ if uploaded_file is not None:
                         prob_parts = [(z, counts[z], (counts[z]/total*100 if total>0 else 0.0)) for z in all_zodiacs]
                         zodiac_parts = sorted(prob_parts, key=lambda x: (-x[1], all_zodiacs.index(x[0])))
                         formatted_parts = [f"**{z}: {p:.1f}%({c}次)**" if c==max_count and max_count>0 else f"{z}: {p:.1f}%({c}次)" for z, c, p in zodiac_parts]
-                        zodiac_trans_md += f"| **{zodiac}** | {total}次 | {" ｜ ".join(formatted_parts)} |\n"
+                        # 🌟 核心修复点：将大括号内部的外部双引号改为单引号 ' ｜ '，完美避免低版本 Python 语法崩盘
+                        zodiac_trans_md += f"| **{zodiac}** | {total}次 | {' ｜ '.join(formatted_parts)} |\n"
                     st.markdown(zodiac_trans_md, unsafe_allow_html=True)
 
             # ==========================================
@@ -291,7 +293,7 @@ if uploaded_file is not None:
                     st.warning("⚠️ 提示：在【且】逻辑极限收紧下，本期刚好没有交集重合的号码，建议切回【或】模式查阅基准。")
 
                 # ==========================================
-                # 🧪 转换规律历史滚动回测引擎 (带防御拦截)
+                # 🧪 转换规律历史滚动回测引擎
                 # ==========================================
                 st.write("---")
                 st.subheader("🧪 历史滚动实战模拟复盘（随上方选择模式实时自动适配）")
@@ -336,4 +338,54 @@ if uploaded_file is not None:
                                 return rates
 
                             snap_t_rates = get_snap_rate(all_tails, lambda x: x[0] % 10, t_cnts, len(history_snapshot))
-                            snap_z_rates = get_snap_rate(all_zodiacs, lambda x: x
+                            snap_z_rates = get_snap_rate(all_zodiacs, lambda x: x[1], z_cnts, len(history_snapshot))
+
+                            def get_snap_strict_6(t_dict, cur, r_dict, items_list):
+                                nxt = t_dict[cur]
+                                cts = {x: nxt.count(x) for x in items_list}
+                                hr = [x for x in items_list if r_dict[x] >= 1.0]
+                                nm = [x for x in items_list if x not in hr]
+                                hr_s = sorted(hr, key=lambda x: (-cts[x], items_list.index(x) if isinstance(x, str) else x))
+                                nm_s = sorted(nm, key=lambda x: (-cts[x], items_list.index(x) if isinstance(x, str) else x))
+                                return set((hr_s + nm_s)[:6])
+
+                            c_num, c_zod = parsed_data[i]
+                            n_num, n_zod = parsed_data[i+1]
+                            
+                            snap_active_tails = get_snap_strict_6(t_trans, c_num % 10, snap_t_rates, all_tails)
+                            snap_active_zods = get_snap_strict_6(z_trans, c_zod, snap_z_rates, all_zodiacs)
+                            
+                            snap_num_count = 0
+                            for n in range(1, 50):
+                                t_m = (n % 10 in snap_active_tails)
+                                z_m = (get_zodiac_of_number(n) in snap_active_zods)
+                                if "严格精选模式" in combine_mode:
+                                    if t_m and z_m: snap_num_count += 1
+                                else:
+                                    if t_m or z_m: snap_num_count += 1
+                            all_sizes.append(snap_num_count)
+                            
+                            tail_hit = (n_num % 10 in snap_active_tails)
+                            zodiac_hit = (n_zod in snap_active_zods)
+                            
+                            is_hit = (tail_hit and zodiac_hit) if "严格精选模式" in combine_mode else (tail_hit or zodiac_hit)
+                            if is_hit:
+                                hit_count += 1
+                                tag = " [🔥双重全中!]" if (tail_hit and zodiac_hit) else (" [🎯仅尾数中]" if tail_hit else " [🎯仅生肖中]")
+                                hit_details.append(f"第 {i+2:03d} 期（前一期 `{c_num},{c_zod}`）：下期开出 `{n_num},{n_zod}`{tag} ｜ 当期策略覆盖了 {snap_num_count} 个号")
+
+                        avg_size = sum(all_sizes) / len(all_sizes) if all_sizes else 0
+                        b_col1, b_col2, b_col3 = st.columns(3)
+                        b_col1.metric("📋 总模拟检验样本数", f"{test_total} 期")
+                        b_col2.metric("📊 每期平均吐出号码", f"{avg_size:.1f} 个号")
+                        b_col3.metric("🎯 综合历史捕获胜率", f"{(hit_count / test_total * 100):.2f}%")
+
+                        st.write("---")
+                        st.success(f"🏁 历史滚动回测复盘完成！清单明细如下：")
+                        st.code("\n".join(hit_details), language="text")
+                    except Exception as ex:
+                        st.error(f"💥 回测内部运算发生错误: {ex}")
+                        st.code(traceback.format_exc(), language="text")
+    except Exception as global_ex:
+        st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
+        st.code(traceback.format_exc(), language="text")
