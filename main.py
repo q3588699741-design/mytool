@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (终极算力版)")
+st.title("📊 记录全维度综合统计看板 (终极算力版)")
 st.caption("最新总体冷热 ｜ 当前遗漏与欲出几率 ｜ 大局观指标分析 ｜ 状态转移矩阵 ｜ 历史策略回测")
 
 # 1. 配置文件上传组件
