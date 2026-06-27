@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 全维度综合统计看板")
+st.title("📊 开奖记录全维度综合统计看板")
 st.caption("最新总量冷热 ｜ 当前期数遗漏 ｜ 状态转移矩阵 ｜ 规整对齐排版")
 
 # 1. 配置文件上传组件
@@ -43,7 +43,7 @@ if uploaded_file is not None:
         
         st.write("---")
         
-        # 🌟 核心排版优化：使用 Tabs 将三大功能进行横向归类，界面极度整齐
+        # 使用 Tabs 将三大功能进行横向归类，界面极度整齐
         tab1, tab2, tab3 = st.tabs(["🔥 1. 大盘总量冷热榜", "⏳ 2. 当前未出遗漏榜", "🔄 3. 前后行状态转移矩阵"])
 
         # ==========================================
@@ -115,7 +115,7 @@ if uploaded_file is not None:
                 st.markdown(zodiac_md)
 
         # ==========================================
-        # TAB 2: 当前未出遗漏榜（✨新增加核心模块）
+        # TAB 2: 当前未出遗漏榜（✨全面升级版）
         # ==========================================
         with tab2:
             st.subheader("⏳ 截止当前最新一期：各指标未出遗漏期数统计（按遗漏时间降序排列）")
@@ -132,7 +132,7 @@ if uploaded_file is not None:
                         found = True
                         break
                 if not found:
-                    num_omission[n] = total_records # 整个历史都没出现过
+                    num_omission[n] = total_records
                     
             # 2. 生肖遗漏计算
             zodiac_omission = {}
@@ -146,14 +146,37 @@ if uploaded_file is not None:
                 if not found:
                     zodiac_omission[z] = total_records
 
-            # 两列并排排版
-            miss_col1, miss_col2 = st.columns(2)
+            # 3. 新增：尾数遗漏计算 (0-9)
+            tail_omission = {}
+            for t in all_tails:
+                found = False
+                for i in range(total_records - 1, -1, -1):
+                    if parsed_data[i][0] % 10 == t:
+                        tail_omission[t] = (total_records - 1) - i
+                        found = True
+                        break
+                if not found:
+                    tail_omission[t] = total_records
+
+            # 4. 新增：头数遗漏计算 (0头-4头，即十位数)
+            all_heads = list(range(5)) # 0头(1-9), 1头(10-19), 2头(20-29), 3头(30-39), 4头(40-49)
+            head_omission = {}
+            for h in all_heads:
+                found = False
+                for i in range(total_records - 1, -1, -1):
+                    if parsed_data[i][0] // 10 == h:
+                        head_omission[h] = (total_records - 1) - i
+                        found = True
+                        break
+                if not found:
+                    head_omission[h] = total_records
+
+            # --- 第一行布局：号码与生肖 ---
+            miss_row1_col1, miss_row1_col2 = st.columns(2)
             
-            with miss_col1:
+            with miss_row1_col1:
                 st.markdown("### 🔢 49个号码当前遗漏排行")
-                # 排序：遗漏期数从大到小，遗漏一样按号码从小到大
                 sorted_num_miss = sorted(num_omission.items(), key=lambda x: (-x[1], x[0]))
-                
                 num_miss_md = "| 排名 | 号码 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
                 for rank, (n, miss) in enumerate(sorted_num_miss, 1):
                     status = "⚠️ 超级冷码" if miss >= 10 else ("🎯 当期刚出" if miss == 0 else "正常")
@@ -161,17 +184,40 @@ if uploaded_file is not None:
                     num_miss_md += f"| {rank} | {n_str} | **{miss}** 期未出 | {status} |\n"
                 st.markdown(num_miss_md)
                 
-            with miss_col2:
+            with miss_row1_col2:
                 st.markdown("### 🔮 12生肖当前遗漏排行")
-                # 排序：遗漏期数从大到小
                 sorted_zodiac_miss = sorted(zodiac_omission.items(), key=lambda x: (-x[1], all_zodiacs.index(x[0])))
-                
                 zodiac_miss_md = "| 排名 | 生肖 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
                 for rank, (z, miss) in enumerate(sorted_zodiac_miss, 1):
                     status = "⚠️ 超级冷肖" if miss >= 5 else ("🎯 当期刚出" if miss == 0 else "正常")
                     z_str = f"**{z}**" if miss >= 5 or miss == 0 else z
                     zodiac_miss_md += f"| {rank} | {z_str} | **{miss}** 期未出 | {status} |\n"
                 st.markdown(zodiac_miss_md)
+
+            st.write("---") # 横向分割线，划分上下两行，保证视觉对齐
+
+            # --- 第二行布局（新加）：尾数与头数 ---
+            miss_row2_col1, miss_row2_col2 = st.columns(2)
+
+            with miss_row2_col1:
+                st.markdown("### 🎯 10个尾数当前遗漏排行")
+                sorted_tail_miss = sorted(tail_omission.items(), key=lambda x: (-x[1], x[0]))
+                tail_miss_md = "| 排名 | 尾数 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
+                for rank, (t, miss) in enumerate(sorted_tail_miss, 1):
+                    status = "⚠️ 超级冷尾" if miss >= 5 else ("🎯 当期刚出" if miss == 0 else "正常")
+                    t_str = f"**{t}尾**" if miss >= 5 or miss == 0 else f"{t}尾"
+                    tail_miss_md += f"| {rank} | {t_str} | **{miss}** 期未出 | {status} |\n"
+                st.markdown(tail_miss_md)
+
+            with miss_row2_col2:
+                st.markdown("### 🔝 5个头数当前遗漏排行")
+                sorted_head_miss = sorted(head_omission.items(), key=lambda x: (-x[1], x[0]))
+                head_miss_md = "| 排名 | 头数 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
+                for rank, (h, miss) in enumerate(sorted_head_miss, 1):
+                    status = "⚠️ 超级冷头" if miss >= 4 else ("🎯 当期刚出" if miss == 0 else "正常")
+                    h_str = f"**{h}头**" if miss >= 4 or miss == 0 else f"{h}头"
+                    head_miss_md += f"| {rank} | {h_str} | **{miss}** 期未出 | {status} |\n"
+                st.markdown(head_miss_md)
 
         # ==========================================
         # TAB 3: 前后行状态转移矩阵
