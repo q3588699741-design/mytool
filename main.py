@@ -4,8 +4,8 @@ from collections import defaultdict
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板")
-st.caption("最新总量冷热 ｜ 当前期数遗漏 ｜ 状态转移矩阵 ｜ 规整对齐排版")
+st.title("📊 开奖记录全维度综合统计看板 (终极算力版)")
+st.caption("最新总体冷热 ｜ 当前遗漏与欲出几率 ｜ 大局观指标分析 ｜ 状态转移矩阵 ｜ 历史策略回测")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -40,11 +40,18 @@ if uploaded_file is not None:
         # 定义全局标准集合
         all_tails = list(range(10))
         all_zodiacs = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
+        all_heads = list(range(5))
         
         st.write("---")
         
-        # 使用 Tabs 将三大功能进行横向归类，界面极度整齐
-        tab1, tab2, tab3 = st.tabs(["🔥 1. 大盘总量冷热榜", "⏳ 2. 当前未出遗漏榜", "🔄 3. 前后行状态转移矩阵"])
+        # 🌟 核心排版：扩展为 5 大功能 Tabs 选项卡，界面干净规整，绝不遮挡文字
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "🔥 1. 大盘总量冷热榜", 
+            "⏳ 2. 当前未出遗漏与欲出榜", 
+            "📈 3. 大局观综合指标分析",
+            "🔄 4. 前后行状态转移矩阵",
+            "🧪 5. 转换规律历史回测引擎"
+        ])
 
         # ==========================================
         # TAB 1: 大盘总量冷热榜
@@ -63,7 +70,6 @@ if uploaded_file is not None:
                 
             hot_col1, hot_col2, hot_col3 = st.columns(3)
             
-            # 1. 号码冷热
             with hot_col1:
                 st.markdown("### 🔢 号码冷热排行 (1-49)")
                 num_hot_data = []
@@ -80,7 +86,6 @@ if uploaded_file is not None:
                     num_md += f"| {rank} | {num_str} {flag} | {cnt}次 | {pct:.1f}% |\n"
                 st.markdown(num_md)
                 
-            # 2. 尾数冷热
             with hot_col2:
                 st.markdown("### 🎯 尾数冷热排行 (0-9)")
                 tail_hot_data = []
@@ -97,7 +102,6 @@ if uploaded_file is not None:
                     tail_md += f"| {rank} | {tail_str} {flag} | {cnt}次 | {pct:.1f}% |\n"
                 st.markdown(tail_md)
                 
-            # 3. 生肖冷热
             with hot_col3:
                 st.markdown("### 🔮 生肖冷热排行")
                 zodiac_hot_data = []
@@ -115,16 +119,15 @@ if uploaded_file is not None:
                 st.markdown(zodiac_md)
 
         # ==========================================
-        # TAB 2: 当前未出遗漏榜（✨全面升级版）
+        # TAB 2: 当前未出遗漏与欲出榜（🌟引入欲出几率模型）
         # ==========================================
         with tab2:
-            st.subheader("⏳ 截止当前最新一期：各指标未出遗漏期数统计（按遗漏时间降序排列）")
-            st.caption("提示：遗漏期数越大代表该指标越久没有开出；遗漏为 0 表示上期（最新一期）刚刚开出。")
+            st.subheader("⏳ 截止当前最新一期：遗漏期数与欲出几率深度统计")
+            st.markdown("💡 **数学公式原理**：$$\\text{欲出几率} = \\frac{\\text{当前遗漏期数}}{\\text{历史平均出号间隔}}$$。当数值大于 **1.0** 时，意味着该指标连空时间已打破其历史平均频率，属于高概率回补区间。")
             
-            # --- 算法：倒序扫描计算遗漏 ---
-            # 1. 号码遗漏计算
+            # 1. 号码遗漏与欲出
             num_omission = {}
-            for n in range(1, 50):
+            for n in range(1, 49 + 1):
                 found = False
                 for i in range(total_records - 1, -1, -1):
                     if parsed_data[i][0] == n:
@@ -134,7 +137,7 @@ if uploaded_file is not None:
                 if not found:
                     num_omission[n] = total_records
                     
-            # 2. 生肖遗漏计算
+            # 2. 生肖遗漏与欲出
             zodiac_omission = {}
             for z in all_zodiacs:
                 found = False
@@ -146,7 +149,7 @@ if uploaded_file is not None:
                 if not found:
                     zodiac_omission[z] = total_records
 
-            # 3. 新增：尾数遗漏计算 (0-9)
+            # 3. 尾数遗漏与欲出
             tail_omission = {}
             for t in all_tails:
                 found = False
@@ -158,8 +161,7 @@ if uploaded_file is not None:
                 if not found:
                     tail_omission[t] = total_records
 
-            # 4. 新增：头数遗漏计算 (0头-4头，即十位数)
-            all_heads = list(range(5)) # 0头(1-9), 1头(10-19), 2头(20-29), 3头(30-39), 4头(40-49)
+            # 4. 头数遗漏与欲出
             head_omission = {}
             for h in all_heads:
                 found = False
@@ -171,58 +173,114 @@ if uploaded_file is not None:
                 if not found:
                     head_omission[h] = total_records
 
-            # --- 第一行布局：号码与生肖 ---
+            # 渲染双行两列对齐布局
             miss_row1_col1, miss_row1_col2 = st.columns(2)
             
             with miss_row1_col1:
-                st.markdown("### 🔢 49个号码当前遗漏排行")
-                sorted_num_miss = sorted(num_omission.items(), key=lambda x: (-x[1], x[0]))
-                num_miss_md = "| 排名 | 号码 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
-                for rank, (n, miss) in enumerate(sorted_num_miss, 1):
-                    status = "⚠️ 超级冷码" if miss >= 10 else ("🎯 当期刚出" if miss == 0 else "正常")
-                    n_str = f"**{n:02d}**" if miss >= 10 or miss == 0 else f"{n:02d}"
-                    num_miss_md += f"| {rank} | {n_str} | **{miss}** 期未出 | {status} |\n"
-                st.markdown(num_miss_md)
+                st.markdown("### 🔢 号码遗漏与欲出排行")
+                # 按照欲出几率降序排序
+                num_list = []
+                for n in range(1, 50):
+                    miss = num_omission[n]
+                    cnt = num_counts[n]
+                    avg_interval = (total_records / cnt) if cnt > 0 else total_records
+                    exp_rate = miss / avg_interval
+                    num_list.append((n, miss, exp_rate))
+                num_list.sort(key=lambda x: (-x[2], x[0]))
+                
+                md = "| 排名 | 号码 | 当前遗漏 | 历史平均间隔 | 欲出几率 | 状态提醒 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                for r, (n, miss, rate) in enumerate(num_list, 1):
+                    status = "🚨 高危欲出" if rate >= 1.2 else ("🎯 当期刚出" if miss == 0 else "正常")
+                    md += f"| {r} | {n:02d} | {miss}期 | {avg_interval:.1f}期 | **{rate:.2f}** | {status} |\n"
+                st.markdown(md)
                 
             with miss_row1_col2:
-                st.markdown("### 🔮 12生肖当前遗漏排行")
-                sorted_zodiac_miss = sorted(zodiac_omission.items(), key=lambda x: (-x[1], all_zodiacs.index(x[0])))
-                zodiac_miss_md = "| 排名 | 生肖 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
-                for rank, (z, miss) in enumerate(sorted_zodiac_miss, 1):
-                    status = "⚠️ 超级冷肖" if miss >= 5 else ("🎯 当期刚出" if miss == 0 else "正常")
-                    z_str = f"**{z}**" if miss >= 5 or miss == 0 else z
-                    zodiac_miss_md += f"| {rank} | {z_str} | **{miss}** 期未出 | {status} |\n"
-                st.markdown(zodiac_miss_md)
+                st.markdown("### 🔮 生肖遗漏与欲出排行")
+                zodiac_list = []
+                for z in all_zodiacs:
+                    miss = zodiac_omission[z]
+                    cnt = zodiac_counts[z]
+                    avg_interval = (total_records / cnt) if cnt > 0 else total_records
+                    exp_rate = miss / avg_interval
+                    zodiac_list.append((z, miss, exp_rate))
+                zodiac_list.sort(key=lambda x: (-x[2], all_zodiacs.index(x[0])))
+                
+                md = "| 排名 | 生肖 | 当前遗漏 | 历史平均间隔 | 欲出几率 | 状态提醒 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                for r, (z, miss, rate) in enumerate(zodiac_list, 1):
+                    status = "🚨 高危欲出" if rate >= 1.2 else ("🎯 当期刚出" if miss == 0 else "正常")
+                    md += f"| {r} | {z} | {miss}期 | {avg_interval:.1f}期 | **{rate:.2f}** | {status} |\n"
+                st.markdown(md)
 
-            st.write("---") # 横向分割线，划分上下两行，保证视觉对齐
-
-            # --- 第二行布局（新加）：尾数与头数 ---
+            st.write("---")
             miss_row2_col1, miss_row2_col2 = st.columns(2)
 
             with miss_row2_col1:
-                st.markdown("### 🎯 10个尾数当前遗漏排行")
-                sorted_tail_miss = sorted(tail_omission.items(), key=lambda x: (-x[1], x[0]))
-                tail_miss_md = "| 排名 | 尾数 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
-                for rank, (t, miss) in enumerate(sorted_tail_miss, 1):
-                    status = "⚠️ 超级冷尾" if miss >= 5 else ("🎯 当期刚出" if miss == 0 else "正常")
-                    t_str = f"**{t}尾**" if miss >= 5 or miss == 0 else f"{t}尾"
-                    tail_miss_md += f"| {rank} | {t_str} | **{miss}** 期未出 | {status} |\n"
-                st.markdown(tail_miss_md)
+                st.markdown("### 🎯 10个尾数遗漏与欲出排行")
+                tail_list = []
+                for t in all_tails:
+                    miss = tail_omission[t]
+                    cnt = tail_counts[t]
+                    avg_interval = (total_records / cnt) if cnt > 0 else total_records
+                    exp_rate = miss / avg_interval
+                    tail_list.append((t, miss, exp_rate))
+                tail_list.sort(key=lambda x: (-x[2], x[0]))
+                
+                md = "| 排名 | 尾数 | 当前遗漏 | 历史平均间隔 | 欲出几率 | 状态提醒 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                for r, (t, miss, rate) in enumerate(tail_list, 1):
+                    status = "🚨 高危欲出" if rate >= 1.2 else ("🎯 当期刚出" if miss == 0 else "正常")
+                    md += f"| {r} | {t}尾 | {miss}期 | {avg_interval:.1f}期 | **{rate:.2f}** | {status} |\n"
+                st.markdown(md)
 
             with miss_row2_col2:
-                st.markdown("### 🔝 5个头数当前遗漏排行")
-                sorted_head_miss = sorted(head_omission.items(), key=lambda x: (-x[1], x[0]))
-                head_miss_md = "| 排名 | 头数 | 当前已连空（遗漏） | 状态提醒 |\n| :---: | :---: | :---: | :---: |\n"
-                for rank, (h, miss) in enumerate(sorted_head_miss, 1):
-                    status = "⚠️ 超级冷头" if miss >= 4 else ("🎯 当期刚出" if miss == 0 else "正常")
-                    h_str = f"**{h}头**" if miss >= 4 or miss == 0 else f"{h}头"
-                    head_miss_md += f"| {rank} | {h_str} | **{miss}** 期未出 | {status} |\n"
-                st.markdown(head_miss_md)
+                st.markdown("### 🔝 5个头数遗漏与欲出排行")
+                head_counts_dict = defaultdict(int)
+                for num, _ in parsed_data:
+                    head_counts_dict[num // 10] += 1
+                    
+                head_list = []
+                for h in all_heads:
+                    miss = head_omission[h]
+                    cnt = head_counts_dict[h]
+                    avg_interval = (total_records / cnt) if cnt > 0 else total_records
+                    exp_rate = miss / avg_interval
+                    head_list.append((h, miss, exp_rate))
+                head_list.sort(key=lambda x: (-x[2], x[0]))
+                
+                md = "| 排名 | 头数 | 当前遗漏 | 历史平均间隔 | 欲出几率 | 状态提醒 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                for r, (h, miss, rate) in enumerate(head_list, 1):
+                    status = "🚨 高危欲出" if rate >= 1.2 else ("🎯 当期刚出" if miss == 0 else "正常")
+                    md += f"| {r} | {h}头 | {miss}期 | {avg_interval:.1f}期 | **{rate:.2f}** | {status} |\n"
+                st.markdown(md)
 
         # ==========================================
-        # TAB 3: 前后行状态转移矩阵
+        # TAB 3: 大局观综合指标分析（✨全新功能模块）
         # ==========================================
         with tab3:
+            st.subheader("📈 大盘宏观形态指标分布")
+            st.caption("通过观测全局偏好比例，防止选号偏离统计大盘。")
+            
+            # 计算宏观比例
+            odd_cnt = sum(1 for n, _ in parsed_data if n % 2 != 0)
+            even_cnt = sum(1 for n, _ in parsed_data if n % 2 == 0)
+            big_cnt = sum(1 for n, _ in parsed_data if n >= 25)
+            small_cnt = sum(1 for n, _ in parsed_data if n < 25)
+            avg_sum = sum(n for n, _ in parsed_data) / total_records
+            
+            ind_col1, ind_col2, ind_col3 = st.columns(3)
+            ind_col1.metric("🔢 历史总平均号码数值", f"{avg_sum:.2f}", "黄金中轴线线：25.00")
+            ind_col2.metric("🌗 全局单双比 (单号 ｜ 双号)", f"{odd_cnt}期 ｜ {even_cnt}期", f"单号占比: {(odd_cnt/total_records)*100:.1f}%")
+            ind_col3.metric("🌌 全局大小比 (大号 $\\ge24$ ｜ 小号)", f"{big_cnt}期 ｜ {small_cnt}期", f"大号占比: {(big_cnt/total_records)*100:.1f}%")
+
+        # ==========================================
+        # TAB 4: 前后行状态转移矩阵
+        # ==========================================
+        with tab3 or tab4: # 保持原转移逻辑
+            if "tab4" in locals() or "tab4" in globals():
+                current_tab = tab4
+            else:
+                current_tab = tab3
+                
+        with current_tab:
             st.subheader("🔄 纵向序列演变规律：当前行开出后，下一行开出什么的概率")
             
             tail_transitions = defaultdict(list)
@@ -239,7 +297,6 @@ if uploaded_file is not None:
                 
             trans_col1, trans_col2 = st.columns(2)
             
-            # 尾数转移
             with trans_col1:
                 st.markdown("### 🔢 尾数 0-9 后行尾数完整分布")
                 tail_trans_md = "| 当前尾数 | 历史总计 | 下一行尾数概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
@@ -249,7 +306,6 @@ if uploaded_file is not None:
                     counts = defaultdict(int)
                     for n in nexts:
                         counts[n] += 1
-                    
                     max_count = max(counts.values()) if counts else 0
                     prob_parts = []
                     for t in all_tails:
@@ -267,7 +323,6 @@ if uploaded_file is not None:
                     tail_trans_md += f"| **{tail}尾** | {total}次 | {" ｜ ".join(formatted_parts)} |\n"
                 st.markdown(tail_trans_md, unsafe_allow_html=True)
 
-            # 生肖转移
             with trans_col2:
                 st.markdown("### 🔮 各生肖后行生肖完整分布")
                 zodiac_trans_md = "| 当前生肖 | 历史总计 | 下一行生肖概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
@@ -277,7 +332,6 @@ if uploaded_file is not None:
                     counts = defaultdict(int)
                     for n in nexts:
                         counts[n] += 1
-                        
                     max_count = max(counts.values()) if counts else 0
                     prob_parts = []
                     for z in all_zodiacs:
@@ -294,3 +348,52 @@ if uploaded_file is not None:
                             formatted_parts.append(f"{z}: {p:.1f}%({c}次)")
                     zodiac_trans_md += f"| **{zodiac}** | {total}次 | {" ｜ ".join(formatted_parts)} |\n"
                 st.markdown(zodiac_trans_md, unsafe_allow_html=True)
+
+        # ==========================================
+        # TAB 5: 转换规律历史回测引擎（✨全新黑科技模块）
+        # ==========================================
+        with tab5:
+            st.subheader("🧪 状态转移策略历史回测复盘引擎")
+            st.markdown("说明：点击下方按钮后，系统会模拟在历史所有期数中，每次都采用**当前尾数下期最高频尾数（含并列） 且 当前生肖下期最高频生肖（含并列）**的复合池进行全量对答案判定。")
+            
+            if st.button("🚀 开启全量历史大回测", type="primary"):
+                # 重新计算各最高频候选集
+                best_tail_pred = {}
+                for tail, nexts in tail_transitions.items():
+                    counts = defaultdict(int)
+                    for n in nexts: counts[n] += 1
+                    max_count = max(counts.values())
+                    best_tail_pred[tail] = [t for t, c in counts.items() if c == max_count]
+
+                best_zodiac_pred = {}
+                for zodiac, nexts in zodiac_transitions.items():
+                    counts = defaultdict(int)
+                    for n in nexts: counts[n] += 1
+                    max_count = max(counts.values())
+                    best_zodiac_pred[zodiac] = [z for z, c in counts.items() if c == max_count]
+
+                # 回测循环
+                hit_count = 0
+                test_total = len(parsed_data) - 1
+                hit_details = []
+
+                for i in range(test_total):
+                    c_num, c_zod = parsed_data[i]
+                    n_num, n_zod = parsed_data[i+1]
+                    
+                    p_tails = best_tail_pred.get(c_num % 10, [])
+                    p_zods = best_zodiac_pred.get(c_zod, [])
+                    
+                    if (n_num % 10 in p_tails) and (n_zod in p_zods):
+                        hit_count += 1
+                        hit_details.append(f"第 {i+2} 行（基于第 {i+1} 行 `{c_num},{c_zod}` 预测）：成功抓获下一期 `{n_num},{n_zod}` 🎯")
+
+                # 结果大屏渲染
+                b_col1, b_col2, b_col3 = st.columns(3)
+                b_col1.metric("📋 总模拟检验样本数", f"{test_total} 期")
+                b_col2.metric("🎯 完美双中总期数", f"{hit_count} 期")
+                b_col3.metric("📊 综合历史命中率", f"{(hit_count / test_total * 100):.2f}%")
+
+                st.write("---")
+                st.success(f"🏁 历史大回测完成！当前数据下该特征的实战拦截率为 **{(hit_count / test_total * 100):.2f}%**。以下为完美的双命中期数明细：")
+                st.code("\n".join(hit_details), language="text")
