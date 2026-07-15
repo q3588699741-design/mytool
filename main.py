@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (核心提纯版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵")
+st.title("📊 开奖记录全维度综合统计看板 (全量核心版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯遗漏反弹智能筛选")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -153,11 +153,12 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 🌟 核心排版精简：保留纯净三大板块
-            tab1, tab2, tab3 = st.tabs([
+            # 扩展为四大精细选项卡结构
+            tab1, tab2, tab3, tab4 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
-                "🔄 3. 前后行状态转移矩阵"
+                "🔄 3. 前后行状态转移矩阵",
+                "🎯 4. 遗漏反弹触发筛选"
             ])
 
             # ==========================================
@@ -198,7 +199,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (号码、生肖、尾数双重遗漏)
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
@@ -254,7 +255,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # 🔄 TAB 3: 前后行状态转移矩阵 (尾数与头数演变)
+            # 🔄 TAB 3: 前后行状态转移矩阵
             # ==========================================
             with tab3:
                 st.subheader("🔄 纵向序列演变规律概率分布")
@@ -271,7 +272,6 @@ if uploaded_file is not None:
                         prob_parts = [(t, counts[t], (counts[t]/total*100 if total>0 else 0.0)) for t in all_tails]
                         prob_parts.sort(key=lambda x: (-x[1], x[0]))
                         formatted_parts = [f"**{t}尾: {p:.1f}%({c}次)**" if c==max_count and max_count>0 else f"{t}尾: {p:.1f}%({c}次)" for t, c, p in prob_parts]
-                        # 隔离拼接，防止不同版本 Python 引发 f-string 语法解析报错
                         joined_tail_str = ' ｜ '.join(formatted_parts)
                         tail_trans_md += f"| **{tail}尾** | {total}次 | {joined_tail_str} |\n"
                     st.markdown(tail_trans_md, unsafe_allow_html=True)
@@ -290,6 +290,60 @@ if uploaded_file is not None:
                         joined_head_str = ' ｜ '.join(formatted_parts)
                         head_trans_md += f"| **{head}头** | {total}次 | {joined_head_str} |\n"
                     st.markdown(head_trans_md, unsafe_allow_html=True)
+
+            # ==========================================
+            # 🎯 TAB 4: 遗漏反弹触发筛选（✨全新加塞黑科技硬核功能）
+            # ==========================================
+            with tab4:
+                st.subheader("🎯 技术面深水区：自动筛选出【当前遗漏 $\ge$ 上次遗漏】的变盘反弹指标")
+                st.markdown("💡 **操作说明**：下方每个方框的右上角都有一个**一键复制按钮**。鼠标悬停即可点击全选复制，省去手动打字的烦恼。")
+                
+                # 1. 执行号码筛选与严格顺序重排
+                triggered_nums = []
+                for n in range(1, 50):
+                    if num_omission[n] >= num_last_omission[n]:
+                        triggered_nums.append(n)
+                triggered_nums.sort() # 严格从小到大按顺序排列
+                
+                # 2. 执行尾数筛选与严格顺序重排
+                triggered_tails = []
+                for t in all_tails:
+                    if tail_omission[t] >= tail_last_omission[t]:
+                        triggered_tails.append(t)
+                triggered_tails.sort() # 严格由小到大按顺序排列
+                
+                # 3. 执行生肖筛选（保持传统十二生肖的标准顺序分布）
+                triggered_zodiacs = []
+                for z in all_zodiacs:
+                    if zodiac_omission[z] >= zodiac_last_omission[z]:
+                        triggered_zodiacs.append(z)
+                
+                # 渲染前端复制大屏
+                c1, c2, c3 = st.columns(3)
+                
+                with c1:
+                    st.markdown(f"🔢 **触发反弹的精选号码池 (共 {len(triggered_nums)} 个)**")
+                    num_copy_text = ", ".join([f"{x:02d}" for x in triggered_nums])
+                    if triggered_nums:
+                        st.code(num_copy_text, language="text")
+                    else:
+                        st.info("暂无号码触发条件")
+                        
+                with c2:
+                    st.markdown(f"🎯 **触发反弹的精选尾数池 (共 {len(triggered_tails)} 个)**")
+                    tail_copy_text = ", ".join([f"{x}尾" for x in triggered_tails])
+                    if triggered_tails:
+                        st.code(tail_copy_text, language="text")
+                    else:
+                        st.info("暂无尾数触发条件")
+                        
+                with c3:
+                    st.markdown(f"🔮 **触发反弹的精选生肖池 (共 {len(triggered_zodiacs)} 个)**")
+                    zod_copy_text = ", ".join(triggered_zodiacs)
+                    if triggered_zodiacs:
+                        st.code(zod_copy_text, language="text")
+                    else:
+                        st.info("暂无生肖触发条件")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
