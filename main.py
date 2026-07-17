@@ -6,7 +6,7 @@ import traceback
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
 st.title("📊 开奖记录全维度综合统计看板 (全量核心版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯遗漏反弹智能筛选")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯遗漏与欲出双充智能筛选")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -292,58 +292,58 @@ if uploaded_file is not None:
                     st.markdown(head_trans_md, unsafe_allow_html=True)
 
             # ==========================================
-            # 🎯 TAB 4: 遗漏反弹触发筛选（✨全新加塞黑科技硬核功能）
+            # 🎯 TAB 4: 遗漏反弹触发筛选 (🛠️ 欲出几率严格升级为 >= 0.4 版)
             # ==========================================
             with tab4:
-                st.subheader("🎯 技术面深水区：自动筛选出【当前遗漏 $\ge$ 上次遗漏】的变盘反弹指标")
+                st.subheader("🎯 变盘与欲出双充防线：自动筛选出【欲出几率 >= 40%(0.40) 或 当前遗漏 $\ge$ 上次遗漏】的精选指标")
                 st.markdown("💡 **操作说明**：下方每个方框的右上角都有一个**一键复制按钮**。鼠标悬停即可点击全选复制，省去手动打字的烦恼。")
                 
-                # 1. 执行号码筛选与严格顺序重排
+                # 🌟 核心更新 1：执行号码双重筛选(升级为 >= 0.4)与严格顺序重排
                 triggered_nums = []
                 for n in range(1, 50):
-                    if num_omission[n] >= num_last_omission[n]:
+                    if (num_rates[n] >= 0.4) or (num_omission[n] >= num_last_omission[n]):
                         triggered_nums.append(n)
                 triggered_nums.sort() # 严格从小到大按顺序排列
                 
-                # 2. 执行尾数筛选与严格顺序重排
+                # 🌟 核心更新 2：执行尾数双重筛选(升级为 >= 0.4)与严格顺序重排
                 triggered_tails = []
                 for t in all_tails:
-                    if tail_omission[t] >= tail_last_omission[t]:
+                    if (tail_rates[t] >= 0.4) or (tail_omission[t] >= tail_last_omission[t]):
                         triggered_tails.append(t)
                 triggered_tails.sort() # 严格由小到大按顺序排列
                 
-                # 3. 执行生肖筛选（保持传统十二生肖的标准顺序分布）
+                # 🌟 核心更新 3：执行生肖双重筛选(升级为 >= 0.4)（保持传统十二生肖的标准顺序分布）
                 triggered_zodiacs = []
                 for z in all_zodiacs:
-                    if zodiac_omission[z] >= zodiac_last_omission[z]:
+                    if (zodiac_rates[z] >= 0.4) or (zodiac_omission[z] >= zodiac_last_omission[z]):
                         triggered_zodiacs.append(z)
                 
-                # 渲染前端复制大屏
+                # 渲染前端高精复制大屏
                 c1, c2, c3 = st.columns(3)
                 
                 with c1:
-                    st.markdown(f"🔢 **触发反弹的精选号码池 (共 {len(triggered_nums)} 个)**")
+                    st.markdown(f"🔢 **触发反弹与欲出的精选号码池 (共 {len(triggered_nums)} 个)**")
                     num_copy_text = ", ".join([f"{x:02d}" for x in triggered_nums])
                     if triggered_nums:
                         st.code(num_copy_text, language="text")
                     else:
-                        st.info("暂无号码触发条件")
+                        st.info("暂无号码触发当前条件")
                         
                 with c2:
-                    st.markdown(f"🎯 **触发反弹的精选尾数池 (共 {len(triggered_tails)} 个)**")
+                    st.markdown(f"🎯 **触发反弹与欲出的精选尾数池 (共 {len(triggered_tails)} 个)**")
                     tail_copy_text = ", ".join([f"{x}尾" for x in triggered_tails])
                     if triggered_tails:
                         st.code(tail_copy_text, language="text")
                     else:
-                        st.info("暂无尾数触发条件")
+                        st.info("暂无尾数触发当前条件")
                         
                 with c3:
-                    st.markdown(f"🔮 **触发反弹的精选生肖池 (共 {len(triggered_zodiacs)} 个)**")
+                    st.markdown(f"🔮 **触发反弹与欲出的精选生肖池 (共 {len(triggered_zodiacs)} 个)**")
                     zod_copy_text = ", ".join(triggered_zodiacs)
                     if triggered_zodiacs:
                         st.code(zod_copy_text, language="text")
                     else:
-                        st.info("暂无生肖触发条件")
+                        st.info("暂无生肖触发当前条件")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
