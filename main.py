@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (全量核心版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯遗漏与欲出双充智能筛选")
+st.title("📊 开奖记录全维度综合统计看板 (方案B阶梯对冲版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯方案B阶梯对冲智能分类")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -153,12 +153,12 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 扩展为四大精细选项卡结构
+            # 维持清爽的四大选项卡切换
             tab1, tab2, tab3, tab4 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
-                "🎯 4. 遗漏反弹触发筛选"
+                "🎯 4. 方案B阶梯注码筛选"
             ])
 
             # ==========================================
@@ -174,7 +174,7 @@ if uploaded_file is not None:
                     md = "| 排名 | 号码 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: | :---: |\n"
                     for rank, (n, cnt, pct) in enumerate(num_hot_data, 1):
                         num_str = f"**{n:02d}**" if rank <= 3 and cnt > 0 else f"{n:02d}"
-                        flag = "🔥" if rank <= 3 and cnt > 0 else ("❄️" if cnt == 0 else "")
+                        flag = "🔥" if rank <= 3 Glen else ("❄️" if cnt == 0 else "")
                         md += f"| {rank} | {num_str} {flag} | {cnt}次 | {pct:.1f}% |\n"
                     st.markdown(md)
                 with hot_col2:
@@ -292,58 +292,82 @@ if uploaded_file is not None:
                     st.markdown(head_trans_md, unsafe_allow_html=True)
 
             # ==========================================
-            # 🎯 TAB 4: 遗漏反弹触发筛选 (🛠️ 欲出几率严格升级为 >= 0.4 版)
+            # 🎯 TAB 4: 🛠️ 方案B阶梯式注码自动筛选引擎 (王牌新核心)
             # ==========================================
             with tab4:
-                st.subheader("🎯 变盘与欲出双充防线：自动筛选出【欲出几率 >= 40%(0.40) 或 当前遗漏 $\ge$ 上次遗漏】的精选指标")
-                st.markdown("💡 **操作说明**：下方每个方框的右上角都有一个**一键复制按钮**。鼠标悬停即可点击全选复制，省去手动打字的烦恼。")
+                st.subheader("🛡️ 资金风险防火墙：方案 B 阶梯式重合度自动分类对冲面板")
+                st.markdown("💡 **实战阶梯对冲买法机制**：根据三个大池的条件交叉，程序自动对1-49所有号码进行血统提纯。分类明细支持手机端一键全选复制。")
                 
-                # 🌟 核心更新 1：执行号码双重筛选(升级为 >= 0.4)与严格顺序重排
+                # 1. 前置算出三大触发池
                 triggered_nums = []
                 for n in range(1, 50):
                     if (num_rates[n] >= 0.4) or (num_omission[n] >= num_last_omission[n]):
                         triggered_nums.append(n)
-                triggered_nums.sort() # 严格从小到大按顺序排列
                 
-                # 🌟 核心更新 2：执行尾数双重筛选(升级为 >= 0.4)与严格顺序重排
                 triggered_tails = []
                 for t in all_tails:
                     if (tail_rates[t] >= 0.4) or (tail_omission[t] >= tail_last_omission[t]):
                         triggered_tails.append(t)
-                triggered_tails.sort() # 严格由小到大按顺序排列
                 
-                # 🌟 核心更新 3：执行生肖双重筛选(升级为 >= 0.4)（保持传统十二生肖的标准顺序分布）
                 triggered_zodiacs = []
                 for z in all_zodiacs:
                     if (zodiac_rates[z] >= 0.4) or (zodiac_omission[z] >= zodiac_last_omission[z]):
                         triggered_zodiacs.append(z)
                 
-                # 渲染前端高精复制大屏
-                c1, c2, c3 = st.columns(3)
+                # 2. 转换为哈希集合提速
+                t_nums_set = set(triggered_nums)
+                t_tails_set = set(triggered_tails)
+                t_zods_set = set(triggered_zodiacs)
                 
-                with c1:
-                    st.markdown(f"🔢 **触发反弹与欲出的精选号码池 (共 {len(triggered_nums)} 个)**")
-                    num_copy_text = ", ".join([f"{x:02d}" for x in triggered_nums])
-                    if triggered_nums:
-                        st.code(num_copy_text, language="text")
-                    else:
-                        st.info("暂无号码触发当前条件")
+                # 3. 严格执行 1-49 全维度名额分层扫描
+                triple_overlap_list = []
+                double_overlap_list = []
+                single_overlap_list = []
+                
+                for n in range(1, 50):
+                    c1 = n in t_nums_set
+                    c2 = (n % 10) in t_tails_set
+                    c3 = get_zodiac_of_number(n) in t_zods_set
+                    
+                    match_count = sum([c1, c2, c3])
+                    num_str = f"{n:02d}"
+                    
+                    if match_count == 3:
+                        triple_overlap_list.append(num_str)
+                    elif match_count == 2:
+                        double_overlap_list.append(num_str)
+                    elif match_count == 1:
+                        single_overlap_list.append(num_str)
                         
-                with c2:
-                    st.markdown(f"🎯 **触发反弹与欲出的精选尾数池 (共 {len(triggered_tails)} 个)**")
-                    tail_copy_text = ", ".join([f"{x}尾" for x in triggered_tails])
-                    if triggered_tails:
-                        st.code(tail_copy_text, language="text")
+                # 4. 规整降维排列打印三个阶梯复制框
+                c_b1, c_b2, c_b3 = st.columns(3)
+                
+                with c_b1:
+                    st.markdown("### 🔥 三重号 (重注突击队)")
+                    st.caption("🎯 **入选标准**：同时在号码池、尾数池、生肖池拉响警报。属于核心防线，理应分配**最高倍率注码**！")
+                    if triple_overlap_list:
+                        st.info(f"📋 本期共有核心重叠：{len(triple_overlap_list)} 个码")
+                        st.code(", ".join(triple_overlap_list), language="text")
                     else:
-                        st.info("暂无尾数触发当前条件")
+                        st.warning("暂无号码触发三重交集")
                         
-                with c3:
-                    st.markdown(f"🔮 **触发反弹与欲出的精选生肖池 (共 {len(triggered_zodiacs)} 个)**")
-                    zod_copy_text = ", ".join(triggered_zodiacs)
-                    if triggered_zodiacs:
-                        st.code(zod_copy_text, language="text")
+                with c_b2:
+                    st.markdown("### 📈 双重号 (中注主力军)")
+                    st.caption("🌗 **入选标准**：恰好踩中上述任意两个特征。属于骨干防线，理应分配**中等标准注码**！")
+                    if double_overlap_list:
+                        st.success(f"📋 本期共有次级重叠：{len(double_overlap_list)} 个码")
+                        st.code(", ".join(double_overlap_list), language="text")
                     else:
-                        st.info("暂无生肖触发当前条件")
+                        st.info("暂无号码触发双重交集")
+                        
+                with c_b3:
+                    st.markdown("### 🛡️ 单重号 (轻注防守卫)")
+                    st.caption("❄️ **入选标准**：仅单边踩中一个方案。属于边缘外围防线，仅用**最低限度底注**防守兜底！")
+                    if single_overlap_list:
+                        st.text(f"📋 本期共有孤立外围：{len(single_overlap_list)} 个码")
+                        st.code(", ".join(single_overlap_list), language="text")
+                    else:
+                        st.info("没有单重孤立码")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
