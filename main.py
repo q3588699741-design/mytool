@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (方案B阶梯对冲版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯方案B阶梯注码筛选")
+st.title("📊 开奖记录全维度综合统计看板 (方案B + 独立大池精细版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯阶梯分层与独立触发池双系统")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -158,7 +158,7 @@ if uploaded_file is not None:
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
-                "🎯 4. 方案B阶梯注码筛选"
+                "🎯 4. 方案B阶梯与独立池"
             ])
 
             # ==========================================
@@ -292,34 +292,39 @@ if uploaded_file is not None:
                     st.markdown(head_trans_md, unsafe_allow_html=True)
 
             # ==========================================
-            # 🎯 TAB 4: 🛠 *修正运行版* 方案B阶梯式注码分类
+            # 🎯 TAB 4: 双重拦截面板（阶梯分配 + 独立大池原件）
             # ==========================================
             with tab4:
-                st.subheader("🛡 资金风险防火墙：方案 B 阶梯式重合度自动分类对冲面板")
-                st.markdown("💡 **实战阶梯对冲买法机制**：根据三个大池的条件交叉，程序自动对1-49所有号码进行阶梯分类。")
-                
-                # 1. 前置算出三大触发池
+                # ----------------------------------------
+                # 1. 核心计算：前置筛选三大独立大池
+                # ----------------------------------------
                 triggered_nums = []
                 for n in range(1, 50):
                     if (num_rates[n] >= 0.4) or (num_omission[n] >= num_last_omission[n]):
                         triggered_nums.append(n)
+                triggered_nums.sort() # 严格从小到大按顺序排列
                 
                 triggered_tails = []
                 for t in all_tails:
                     if (tail_rates[t] >= 0.4) or (tail_omission[t] >= tail_last_omission[t]):
                         triggered_tails.append(t)
+                triggered_tails.sort() # 严格由小到大按顺序排列
                 
                 triggered_zodiacs = []
                 for z in all_zodiacs:
                     if (zodiac_rates[z] >= 0.4) or (zodiac_omission[z] >= zodiac_last_omission[z]):
                         triggered_zodiacs.append(z)
                 
-                # 2. 转换为集合提速
+                # ----------------------------------------
+                # 2. 系统 A：方案 B 阶梯式分配大屏（置顶）
+                # ----------------------------------------
+                st.subheader("🛡 方案 B 阶梯式重合度对冲分类面板 (主攻防线)")
+                st.markdown("💡 **操作指南**：根据重合层数进行阶梯投注（三重号投重注、双重号投中注、单重号投极轻底注防冷门）。")
+                
                 t_nums_set = set(triggered_nums)
                 t_tails_set = set(triggered_tails)
                 t_zods_set = set(triggered_zodiacs)
                 
-                # 3. 扫描分类 1-49
                 triple_overlap_list = []
                 double_overlap_list = []
                 single_overlap_list = []
@@ -338,36 +343,68 @@ if uploaded_file is not None:
                         double_overlap_list.append(num_str)
                     elif match_count == 1:
                         single_overlap_list.append(num_str)
-                        
-                # 4. 前端分栏输出
+                
                 c_b1, c_b2, c_b3 = st.columns(3)
                 
                 with c_b1:
                     st.markdown("### 🔥 三重号 (重注突击队)")
-                    st.caption("🎯 **入选标准**：同时在号码池、尾数池、生肖池满足变盘特征。建议分配**最高额度注码**！")
+                    st.caption("同时踩中【号码池 + 尾数池 + 生肖池】。建议重注！")
                     if triple_overlap_list:
-                        st.info(f"📋 本期共有核心重叠：{len(triple_overlap_list)} 个码")
+                        st.info(f"📋 核心重叠数：{len(triple_overlap_list)} 个码")
                         st.code(", ".join(triple_overlap_list), language="text")
                     else:
-                        st.warning("暂无号码触发三重交集")
+                        st.warning("暂无三重号")
                         
                 with c_b2:
                     st.markdown("### 📈 双重号 (中注主力军)")
-                    st.caption("🌗 **入选标准**：恰好踩中其中任意两个方案。建议分配**中等额度注码**！")
+                    st.caption("踩中其中【任意两个】池。建议中等标准注码！")
                     if double_overlap_list:
-                        st.success(f"📋 本期共有次级重叠：{len(double_overlap_list)} 个码")
+                        st.success(f"📋 次级重叠数：{len(double_overlap_list)} 个码")
                         st.code(", ".join(double_overlap_list), language="text")
                     else:
-                        st.info("暂无号码触发双重交集")
+                        st.info("暂无双重号")
                         
                 with c_b3:
                     st.markdown("### 🛡 单重号 (轻注防守卫)")
-                    st.caption("❄ **入选标准**：仅单边踩中一个特征。建议分配**最低限度额度**作为兜底！")
+                    st.caption("仅单边踩中【任意一个】池。建议极轻注兜底防偶发冷门！")
                     if single_overlap_list:
-                        st.text(f"📋 本期共有孤立外围：{len(single_overlap_list)} 个码")
+                        st.text(f"📋 孤立外围数：{len(single_overlap_list)} 个码")
                         st.code(", ".join(single_overlap_list), language="text")
                     else:
-                        st.info("没有单重孤立码")
+                        st.info("暂无单重号")
+
+                # ----------------------------------------
+                # 3. 系统 B：独立触发大池原装区（置底）
+                # ----------------------------------------
+                st.write("---")
+                st.subheader("🎯 独立变盘反弹池明细 (原件大池)")
+                st.markdown("💡 **基础触发明细**：以下为各维度分别独立触发【欲出几率 >= 40%(0.40) 或 当前遗漏 >= 上次遗漏】的原始大名单。")
+                
+                c_p1, c_p2, c_p3 = st.columns(3)
+                
+                with c_p1:
+                    st.markdown(f"🔢 **精选号码大池 (共 {len(triggered_nums)} 个)**")
+                    num_copy_text = ", ".join([f"{x:02d}" for x in triggered_nums])
+                    if triggered_nums:
+                        st.code(num_copy_text, language="text")
+                    else:
+                        st.info("暂无号码触发")
+                        
+                with c_p2:
+                    st.markdown(f"🎯 **精选尾数大池 (共 {len(triggered_tails)} 个)**")
+                    tail_copy_text = ", ".join([f"{x}尾" for x in triggered_tails])
+                    if triggered_tails:
+                        st.code(tail_copy_text, language="text")
+                    else:
+                        st.info("暂无尾数触发")
+                        
+                with c_p3:
+                    st.markdown(f"🔮 **精选生肖大池 (共 {len(triggered_zodiacs)} 个)**")
+                    zod_copy_text = ", ".join(triggered_zodiacs)
+                    if triggered_zodiacs:
+                        st.code(zod_copy_text, language="text")
+                    else:
+                        st.info("暂无生肖触发")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
