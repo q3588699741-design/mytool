@@ -6,7 +6,7 @@ import traceback
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
 st.title("📊 开奖记录全维度综合统计看板 (方案B阶梯对冲版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯方案B阶梯对冲智能分类")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯方案B阶梯注码筛选")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -174,7 +174,7 @@ if uploaded_file is not None:
                     md = "| 排名 | 号码 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: | :---: |\n"
                     for rank, (n, cnt, pct) in enumerate(num_hot_data, 1):
                         num_str = f"**{n:02d}**" if rank <= 3 and cnt > 0 else f"{n:02d}"
-                        flag = "🔥" if rank <= 3 Glen else ("❄️" if cnt == 0 else "")
+                        flag = "🔥" if rank <= 3 and cnt > 0 else ("❄️" if cnt == 0 else "")
                         md += f"| {rank} | {num_str} {flag} | {cnt}次 | {pct:.1f}% |\n"
                     st.markdown(md)
                 with hot_col2:
@@ -292,11 +292,11 @@ if uploaded_file is not None:
                     st.markdown(head_trans_md, unsafe_allow_html=True)
 
             # ==========================================
-            # 🎯 TAB 4: 🛠️ 方案B阶梯式注码自动筛选引擎 (王牌新核心)
+            # 🎯 TAB 4: 🛠 *修正运行版* 方案B阶梯式注码分类
             # ==========================================
             with tab4:
-                st.subheader("🛡️ 资金风险防火墙：方案 B 阶梯式重合度自动分类对冲面板")
-                st.markdown("💡 **实战阶梯对冲买法机制**：根据三个大池的条件交叉，程序自动对1-49所有号码进行血统提纯。分类明细支持手机端一键全选复制。")
+                st.subheader("🛡 资金风险防火墙：方案 B 阶梯式重合度自动分类对冲面板")
+                st.markdown("💡 **实战阶梯对冲买法机制**：根据三个大池的条件交叉，程序自动对1-49所有号码进行阶梯分类。")
                 
                 # 1. 前置算出三大触发池
                 triggered_nums = []
@@ -314,12 +314,12 @@ if uploaded_file is not None:
                     if (zodiac_rates[z] >= 0.4) or (zodiac_omission[z] >= zodiac_last_omission[z]):
                         triggered_zodiacs.append(z)
                 
-                # 2. 转换为哈希集合提速
+                # 2. 转换为集合提速
                 t_nums_set = set(triggered_nums)
                 t_tails_set = set(triggered_tails)
                 t_zods_set = set(triggered_zodiacs)
                 
-                # 3. 严格执行 1-49 全维度名额分层扫描
+                # 3. 扫描分类 1-49
                 triple_overlap_list = []
                 double_overlap_list = []
                 single_overlap_list = []
@@ -339,12 +339,12 @@ if uploaded_file is not None:
                     elif match_count == 1:
                         single_overlap_list.append(num_str)
                         
-                # 4. 规整降维排列打印三个阶梯复制框
+                # 4. 前端分栏输出
                 c_b1, c_b2, c_b3 = st.columns(3)
                 
                 with c_b1:
                     st.markdown("### 🔥 三重号 (重注突击队)")
-                    st.caption("🎯 **入选标准**：同时在号码池、尾数池、生肖池拉响警报。属于核心防线，理应分配**最高倍率注码**！")
+                    st.caption("🎯 **入选标准**：同时在号码池、尾数池、生肖池满足变盘特征。建议分配**最高额度注码**！")
                     if triple_overlap_list:
                         st.info(f"📋 本期共有核心重叠：{len(triple_overlap_list)} 个码")
                         st.code(", ".join(triple_overlap_list), language="text")
@@ -353,7 +353,7 @@ if uploaded_file is not None:
                         
                 with c_b2:
                     st.markdown("### 📈 双重号 (中注主力军)")
-                    st.caption("🌗 **入选标准**：恰好踩中上述任意两个特征。属于骨干防线，理应分配**中等标准注码**！")
+                    st.caption("🌗 **入选标准**：恰好踩中其中任意两个方案。建议分配**中等额度注码**！")
                     if double_overlap_list:
                         st.success(f"📋 本期共有次级重叠：{len(double_overlap_list)} 个码")
                         st.code(", ".join(double_overlap_list), language="text")
@@ -361,8 +361,8 @@ if uploaded_file is not None:
                         st.info("暂无号码触发双重交集")
                         
                 with c_b3:
-                    st.markdown("### 🛡️ 单重号 (轻注防守卫)")
-                    st.caption("❄️ **入选标准**：仅单边踩中一个方案。属于边缘外围防线，仅用**最低限度底注**防守兜底！")
+                    st.markdown("### 🛡 单重号 (轻注防守卫)")
+                    st.caption("❄ **入选标准**：仅单边踩中一个特征。建议分配**最低限度额度**作为兜底！")
                     if single_overlap_list:
                         st.text(f"📋 本期共有孤立外围：{len(single_overlap_list)} 个码")
                         st.code(", ".join(single_overlap_list), language="text")
