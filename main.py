@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (高欲出率精选版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯生肖/尾数双欲出率精选控码")
+st.title("📊 开奖记录全维度综合统计看板 (4维组合选号版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯4维高欲出+拐点精选控码")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -158,7 +158,7 @@ if uploaded_file is not None:
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
-                "🎯 4. 高欲出率精选选号"
+                "🎯 4. 4维组合智能选号"
             ])
 
             # ==========================================
@@ -292,32 +292,50 @@ if uploaded_file is not None:
                     st.markdown(head_trans_md, unsafe_allow_html=True)
 
             # ==========================================
-            # 🎯 TAB 4: ✨ 高欲出率精选控码 (OR 纯净版)
+            # 🎯 TAB 4: ✨ 4维组合智能选号引擎
             # ==========================================
             with tab4:
-                st.subheader("🎯 核心目标阻击：生肖欲出几率 $\ge$ 40% 或 尾数欲出几率 $\ge$ 40% 精选网")
-                st.markdown("💡 **控码拦截机制**：扫描 1-49 全盘，号码对应的【生肖】或者【尾数】中任意一项的欲出几率只要达到了 **40% (0.40) 及以上**，该号码就会被自动收入这张核心网中。")
+                st.subheader("🎯 4维组合智能选号（高欲出率 + 遗漏拐点双向补漏）")
+                st.markdown("""
+                💡 **规则筛选逻辑**：
+                1. **规则 1**：生肖欲出几率 $\ge$ 40% 的对应号码；
+                2. **规则 2**：尾数欲出几率 $\ge$ 40% 的对应号码；
+                3. **规则 3**：生肖欲出几率 < 40% 时，若号码尾数【当前遗漏 $\ge$ 上次遗漏】，强制入选；
+                4. **规则 4**：尾数欲出几率 < 40% 时，若号码生肖【当前遗漏 $\ge$ 上次遗漏】，强制入选。
+                """)
                 
-                # 严格按照“或者”逻辑执行 1-49 扫描打捞
-                or_selected_numbers = []
+                selected_numbers = []
                 for n in range(1, 50):
                     t = n % 10
                     z = get_zodiac_of_number(n)
                     
-                    # 条件：生肖率 >= 0.4 或者 尾数率 >= 0.4
-                    if (zodiac_rates[z] >= 0.4) or (tail_rates[t] >= 0.4):
-                        or_selected_numbers.append(f"{n:02d}")
+                    # 规则 1: 生肖欲出率 >= 0.4
+                    cond1 = zodiac_rates[z] >= 0.4
+                    
+                    # 规则 2: 尾数欲出率 >= 0.4
+                    cond2 = tail_rates[t] >= 0.4
+                    
+                    # 规则 3: 生肖欲出率 < 0.4 且 尾数当前遗漏 >= 上次遗漏
+                    cond3 = (zodiac_rates[z] < 0.4) and (tail_omission[t] >= tail_last_omission[t])
+                    
+                    # 规则 4: 尾数欲出率 < 0.4 且 生肖当前遗漏 >= 上次遗漏
+                    cond4 = (tail_rates[t] < 0.4) and (zodiac_omission[z] >= zodiac_last_omission[z])
+                    
+                    # 满足任意一条条件即可入选
+                    if cond1 or cond2 or cond3 or cond4:
+                        selected_numbers.append(n)
                 
-                or_selected_numbers.sort() # 严格从小到大按顺序排列
+                selected_numbers.sort() # 严格从小到大重新排列
+                formatted_nums = [f"{x:02d}" for x in selected_numbers]
                 
                 st.write("---")
-                st.success(f"🏆 **【双高欲出率全面包抄网】本期符合条件的精选号码共 {len(or_selected_numbers)} 个（已重排）：**")
-                st.markdown("👇 **请直接点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
+                st.success(f"🏆 **【4维精选包抄网】本期符合条件的精选号码共 {len(formatted_nums)} 个（已按由小到大重排）：**")
+                st.markdown("👇 **请点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
                 
-                if or_selected_numbers:
-                    st.code(", ".join(or_selected_numbers), language="text")
+                if formatted_nums:
+                    st.code(", ".join(formatted_nums), language="text")
                 else:
-                    st.info("提示：当前数据周期内暂无号码满足此欲出指标。")
+                    st.info("提示：当前数据周期内暂无号码满足筛选条件。")
                 st.write("---")
 
     except Exception as global_ex:
