@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (4维组合选号版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯4维高欲出+拐点精选控码")
+st.title("📊 开奖记录全维度综合统计看板 (剔除与特赦恢复版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯精准剔除+拐点特赦智能控码")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -158,7 +158,7 @@ if uploaded_file is not None:
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
-                "🎯 4. 4维组合智能选号"
+                "🎯 4. 剔除与拐点特赦智能选号"
             ])
 
             # ==========================================
@@ -292,16 +292,15 @@ if uploaded_file is not None:
                     st.markdown(head_trans_md, unsafe_allow_html=True)
 
             # ==========================================
-            # 🎯 TAB 4: ✨ 4维组合智能选号引擎
+            # 🎯 TAB 4: ✨ 剔除与拐点特赦智能选号引擎
             # ==========================================
             with tab4:
-                st.subheader("🎯 4维组合智能选号（高欲出率 + 遗漏拐点双向补漏）")
+                st.subheader("🎯 智能精选选号（欲出率剔除 + 遗漏拐点特赦）")
                 st.markdown("""
-                💡 **规则筛选逻辑**：
-                1. **规则 1**：生肖欲出几率 $\ge$ 40% 的对应号码；
-                2. **规则 2**：尾数欲出几率 $\ge$ 40% 的对应号码；
-                3. **规则 3**：生肖欲出几率 < 40% 时，若号码尾数【当前遗漏 $\ge$ 上次遗漏】，强制入选；
-                4. **规则 4**：尾数欲出几率 < 40% 时，若号码生肖【当前遗漏 $\ge$ 上次遗漏】，强制入选。
+                💡 **最新过滤逻辑**：
+                1. **删除**：欲出率 < 40% 且 本次遗漏 < 上次遗漏 的生肖对应号码；
+                2. **删除**：欲出率 < 40% 且 本次遗漏 < 上次遗漏 的尾数对应号码；
+                3. **特赦恢复**：被上述剔除规则标记的号码中，只要其 **生肖** 或 **尾数** 满足【本次遗漏 $\ge$ 上次遗漏】，强制予以特赦恢复保留！
                 """)
                 
                 selected_numbers = []
@@ -309,33 +308,32 @@ if uploaded_file is not None:
                     t = n % 10
                     z = get_zodiac_of_number(n)
                     
-                    # 规则 1: 生肖欲出率 >= 0.4
-                    cond1 = zodiac_rates[z] >= 0.4
+                    # 规则 1：生肖欲出率 < 0.4 且 本次遗漏 < 上次遗漏
+                    r1_remove = (zodiac_rates[z] < 0.4) and (zodiac_omission[z] < zodiac_last_omission[z])
                     
-                    # 规则 2: 尾数欲出率 >= 0.4
-                    cond2 = tail_rates[t] >= 0.4
+                    # 规则 2：尾数欲出率 < 0.4 且 本次遗漏 < 上次遗漏
+                    r2_remove = (tail_rates[t] < 0.4) and (tail_omission[t] < tail_last_omission[t])
                     
-                    # 规则 3: 生肖欲出率 < 0.4 且 尾数当前遗漏 >= 上次遗漏
-                    cond3 = (zodiac_rates[z] < 0.4) and (tail_omission[t] >= tail_last_omission[t])
+                    # 规则 3：特赦恢复条件（生肖本次遗漏 >= 上次遗漏 OR 尾数本次遗漏 >= 上次遗漏）
+                    can_restore = (zodiac_omission[z] >= zodiac_last_omission[z]) or (tail_omission[t] >= tail_last_omission[t])
                     
-                    # 规则 4: 尾数欲出率 < 0.4 且 生肖当前遗漏 >= 上次遗漏
-                    cond4 = (tail_rates[t] < 0.4) and (zodiac_omission[z] >= zodiac_last_omission[z])
-                    
-                    # 满足任意一条条件即可入选
-                    if cond1 or cond2 or cond3 or cond4:
+                    # 判定逻辑：被规则1或规则2标记删除，且无法被规则3恢复 -> 剔除；否则保留
+                    if (r1_remove or r2_remove) and not can_restore:
+                        continue # 被删除，不收入选号网
+                    else:
                         selected_numbers.append(n)
                 
-                selected_numbers.sort() # 严格从小到大重新排列
+                selected_numbers.sort() # 严格从小到大按顺序排列
                 formatted_nums = [f"{x:02d}" for x in selected_numbers]
                 
                 st.write("---")
-                st.success(f"🏆 **【4维精选包抄网】本期符合条件的精选号码共 {len(formatted_nums)} 个（已按由小到大重排）：**")
+                st.success(f"🏆 **【特赦恢复精选网】本期符合条件的号码共 {len(formatted_nums)} 个（已按由小到大重排）：**")
                 st.markdown("👇 **请点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
                 
                 if formatted_nums:
                     st.code(", ".join(formatted_nums), language="text")
                 else:
-                    st.info("提示：当前数据周期内暂无号码满足筛选条件。")
+                    st.info("提示：当前数据周期内没有符合条件的号码。")
                 st.write("---")
 
     except Exception as global_ex:
