@@ -5,7 +5,7 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (剔除与特赦恢复版)")
+st.title("📊 开奖记录全维度综合统计看板 (含头数双重遗漏精细版)")
 st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯精准剔除+拐点特赦智能控码")
 
 # 1. 配置文件上传组件
@@ -72,11 +72,13 @@ if uploaded_file is not None:
             num_indices = defaultdict(list)
             tail_indices = defaultdict(list)
             zodiac_indices = defaultdict(list)
+            head_indices = defaultdict(list)
             
             for i, (num, zodiac) in enumerate(parsed_data):
                 num_indices[num].append(i)
                 tail_indices[num % 10].append(i)
                 zodiac_indices[zodiac].append(i)
+                head_indices[num // 10].append(i)
 
             # 1. 号码双重遗漏计算
             num_omission = {}
@@ -123,6 +125,21 @@ if uploaded_file is not None:
                     tail_omission[t] = total_records
                     tail_last_omission[t] = 0
 
+            # 4. 头数双重遗漏计算 (✨新增)
+            head_omission = {}
+            head_last_omission = {}
+            for h in all_heads:
+                idxs = head_indices[h]
+                if idxs:
+                    head_omission[h] = (total_records - 1) - idxs[-1]
+                    if len(idxs) >= 2:
+                        head_last_omission[h] = idxs[-1] - idxs[-2] - 1
+                    else:
+                        head_last_omission[h] = idxs[-1]
+                else:
+                    head_omission[h] = total_records
+                    head_last_omission[h] = 0
+
             # 计算全局欲出几率
             tail_rates = {}
             for t in all_tails:
@@ -141,6 +158,12 @@ if uploaded_file is not None:
                 cnt = num_counts[n]
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 num_rates[n] = num_omission[n] / avg_int
+
+            head_rates = {}
+            for h in all_heads:
+                cnt = head_counts_dict[h]
+                avg_int = (total_records / cnt) if cnt > 0 else total_records
+                head_rates[h] = head_omission[h] / avg_int
 
             # 计算状态转移数据
             tail_transitions = defaultdict(list)
@@ -199,15 +222,15 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨扩展为4列)
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
                 st.caption("提示：当前遗漏代表该项目前连空多少期；上次遗漏代表最近一次开出来的时候，它在历史里憋了多少期。")
-                miss_col1, miss_col2, miss_col3 = st.columns(3)
+                miss_col1, miss_col2, miss_col3, miss_col4 = st.columns(4)
                 
                 with miss_col1:
-                    st.markdown("### 🔢 49个号码双重遗漏与欲出排行")
+                    st.markdown("### 🔢 49个号码遗漏与欲出")
                     num_list = []
                     for n in range(1, 50):
                         miss = num_omission[n]
@@ -223,7 +246,7 @@ if uploaded_file is not None:
                     st.markdown(md)
                     
                 with miss_col2:
-                    st.markdown("### 🔮 12生肖双重遗漏与欲出排行")
+                    st.markdown("### 🔮 12生肖遗漏与欲出")
                     zodiac_list = []
                     for z in all_zodiacs:
                         miss = zodiac_omission[z]
@@ -239,7 +262,7 @@ if uploaded_file is not None:
                     st.markdown(md)
                     
                 with miss_col3:
-                    st.markdown("### 🎯 10个尾数双重遗漏与欲出排行")
+                    st.markdown("### 🎯 10个尾数遗漏与欲出")
                     tail_list_disp = []
                     for t in all_tails:
                         miss = tail_omission[t]
@@ -252,6 +275,22 @@ if uploaded_file is not None:
                     md = "| 排名 | 尾数 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (t, miss, l_miss, avg_int, rate) in enumerate(tail_list_disp, 1):
                         md += f"| {r} | {t}尾 | **{miss}期** | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                    st.markdown(md)
+
+                with miss_col4:
+                    st.markdown("### 🔝 5个头数遗漏与欲出")
+                    head_list_disp = []
+                    for h in all_heads:
+                        miss = head_omission[h]
+                        l_miss = head_last_omission[h]
+                        rate = head_rates[h]
+                        avg_int = (total_records / head_counts_dict[h]) if head_counts_dict[h] > 0 else total_records
+                        head_list_disp.append((h, miss, l_miss, avg_int, rate))
+                    head_list_disp.sort(key=lambda x: (-x[4], x[0]))
+                    
+                    md = "| 排名 | 头数 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                    for r, (h, miss, l_miss, avg_int, rate) in enumerate(head_list_disp, 1):
+                        md += f"| {r} | {h}头 | **{miss}期** | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
                     st.markdown(md)
 
             # ==========================================
