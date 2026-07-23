@@ -5,7 +5,7 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含头数双重遗漏精细版)")
+st.title("📊 记录全维度综合统计看板 (全维度状态转移精细版)")
 st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯精准剔除+拐点特赦智能控码")
 
 # 1. 配置文件上传组件
@@ -125,7 +125,7 @@ if uploaded_file is not None:
                     tail_omission[t] = total_records
                     tail_last_omission[t] = 0
 
-            # 4. 头数双重遗漏计算 (✨新增)
+            # 4. 头数双重遗漏计算
             head_omission = {}
             head_last_omission = {}
             for h in all_heads:
@@ -222,7 +222,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨扩展为4列)
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
@@ -294,11 +294,12 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # 🔄 TAB 3: 前后行状态转移矩阵
+            # 🔄 TAB 3: 前后行状态转移矩阵 (✨扩充为3列)
             # ==========================================
             with tab3:
                 st.subheader("🔄 纵向序列演变规律概率分布")
-                trans_col1, trans_col2 = st.columns(2)
+                trans_col1, trans_col2, trans_col3 = st.columns(3)
+                
                 with trans_col1:
                     st.markdown("### 🔢 尾数 0-9 后行尾数完整分布")
                     tail_trans_md = "| 当前尾数 | 历史总计 | 下一行尾数概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
@@ -314,7 +315,24 @@ if uploaded_file is not None:
                         joined_tail_str = ' ｜ '.join(formatted_parts)
                         tail_trans_md += f"| **{tail}尾** | {total}次 | {joined_tail_str} |\n"
                     st.markdown(tail_trans_md, unsafe_allow_html=True)
+
                 with trans_col2:
+                    st.markdown("### 🔮 12生肖 后行生肖完整分布")
+                    zodiac_trans_md = "| 当前生肖 | 历史总计 | 下一行生肖概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
+                    for z in all_zodiacs:
+                        nexts = zodiac_transitions[z]
+                        total = len(nexts)
+                        counts = defaultdict(int)
+                        for n in nexts: counts[n] += 1
+                        max_count = max(counts.values()) if counts else 0
+                        prob_parts = [(nz, counts[nz], (counts[nz]/total*100 if total>0 else 0.0)) for nz in all_zodiacs]
+                        prob_parts.sort(key=lambda x: (-x[1], all_zodiacs.index(x[0])))
+                        formatted_parts = [f"**{nz}: {p:.1f}%({c}次)**" if c==max_count and max_count>0 else f"{nz}: {p:.1f}%({c}次)" for nz, c, p in prob_parts]
+                        joined_zodiac_str = ' ｜ '.join(formatted_parts)
+                        zodiac_trans_md += f"| **{z}** | {total}次 | {joined_zodiac_str} |\n"
+                    st.markdown(zodiac_trans_md, unsafe_allow_html=True)
+
+                with trans_col3:
                     st.markdown("### 🔝 头数 0-4 后行头数完整分布")
                     head_trans_md = "| 当前头数 | 历史总计 | 下一行头数概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
                     for head in range(5):
