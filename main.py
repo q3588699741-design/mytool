@@ -5,7 +5,7 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 记录全维度综合统计看板 (全维度状态转移精细版)")
+st.title("📊 开奖记录全维度综合统计看板 (拐点视觉高亮版)")
 st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯精准剔除+拐点特赦智能控码")
 
 # 1. 配置文件上传组件
@@ -222,11 +222,11 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨带 🚨 拐点高亮版)
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
-                st.caption("提示：当前遗漏代表该项目前连空多少期；上次遗漏代表最近一次开出来的时候，它在历史里憋了多少期。")
+                st.caption("💡 **直观标注说明**：带有 **🚨 警报** 与 **⚡ 闪电标记** 的项目，代表其【当前遗漏 $\ge$ 上次遗漏】，已触发遗漏拐点！")
                 miss_col1, miss_col2, miss_col3, miss_col4 = st.columns(4)
                 
                 with miss_col1:
@@ -242,7 +242,10 @@ if uploaded_file is not None:
                     
                     md = "| 排名 | 号码 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (n, miss, l_miss, avg_int, rate) in enumerate(num_list, 1):
-                        md += f"| {r} | {n:02d} | **{miss}期** | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        is_inflection = (miss >= l_miss)
+                        n_str = f"**{n:02d}** 🚨" if is_inflection else f"{n:02d}"
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        md += f"| {r} | {n_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
                     st.markdown(md)
                     
                 with miss_col2:
@@ -258,7 +261,10 @@ if uploaded_file is not None:
                     
                     md = "| 排名 | 生肖 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (z, miss, l_miss, avg_int, rate) in enumerate(zodiac_list, 1):
-                        md += f"| {r} | {z} | **{miss}期** | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        is_inflection = (miss >= l_miss)
+                        z_str = f"**{z}** 🚨" if is_inflection else z
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        md += f"| {r} | {z_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
                     st.markdown(md)
                     
                 with miss_col3:
@@ -274,7 +280,10 @@ if uploaded_file is not None:
                     
                     md = "| 排名 | 尾数 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (t, miss, l_miss, avg_int, rate) in enumerate(tail_list_disp, 1):
-                        md += f"| {r} | {t}尾 | **{miss}期** | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        is_inflection = (miss >= l_miss)
+                        t_str = f"**{t}尾** 🚨" if is_inflection else f"{t}尾"
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        md += f"| {r} | {t_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
                     st.markdown(md)
 
                 with miss_col4:
@@ -290,11 +299,14 @@ if uploaded_file is not None:
                     
                     md = "| 排名 | 头数 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (h, miss, l_miss, avg_int, rate) in enumerate(head_list_disp, 1):
-                        md += f"| {r} | {h}头 | **{miss}期** | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        is_inflection = (miss >= l_miss)
+                        h_str = f"**{h}头** 🚨" if is_inflection else f"{h}头"
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
                     st.markdown(md)
 
             # ==========================================
-            # 🔄 TAB 3: 前后行状态转移矩阵 (✨扩充为3列)
+            # 🔄 TAB 3: 前后行状态转移矩阵
             # ==========================================
             with tab3:
                 st.subheader("🔄 纵向序列演变规律概率分布")
