@@ -5,7 +5,7 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (拐点视觉高亮版)")
+st.title("📊 开奖记录全维度综合统计看板 (拐点+高欲出全高亮版)")
 st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯精准剔除+拐点特赦智能控码")
 
 # 1. 配置文件上传组件
@@ -222,11 +222,11 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨带 🚨 拐点高亮版)
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨拐点 🚨 + 高欲出 🔥 全标记版)
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
-                st.caption("💡 **直观标注说明**：带有 **🚨 警报** 与 **⚡ 闪电标记** 的项目，代表其【当前遗漏 $\ge$ 上次遗漏】，已触发遗漏拐点！")
+                st.caption("💡 **标注说明**：带有 **🚨 警报** 代表【当前遗漏 $\ge$ 上次遗漏】（拐点）；带有 **🔥 火焰** 代表【欲出几率 $\ge$ 0.40】（高欲出热度区）！")
                 miss_col1, miss_col2, miss_col3, miss_col4 = st.columns(4)
                 
                 with miss_col1:
@@ -243,9 +243,17 @@ if uploaded_file is not None:
                     md = "| 排名 | 号码 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (n, miss, l_miss, avg_int, rate) in enumerate(num_list, 1):
                         is_inflection = (miss >= l_miss)
-                        n_str = f"**{n:02d}** 🚨" if is_inflection else f"{n:02d}"
+                        is_high_rate = (rate >= 0.4)
+                        
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        
+                        n_str = f"**{n:02d}**{tags}" if (is_inflection or is_high_rate) else f"{n:02d}"
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        md += f"| {r} | {n_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        
+                        md += f"| {r} | {n_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
                     
                 with miss_col2:
@@ -262,9 +270,17 @@ if uploaded_file is not None:
                     md = "| 排名 | 生肖 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (z, miss, l_miss, avg_int, rate) in enumerate(zodiac_list, 1):
                         is_inflection = (miss >= l_miss)
-                        z_str = f"**{z}** 🚨" if is_inflection else z
+                        is_high_rate = (rate >= 0.4)
+                        
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        
+                        z_str = f"**{z}**{tags}" if (is_inflection or is_high_rate) else z
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        md += f"| {r} | {z_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        
+                        md += f"| {r} | {z_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
                     
                 with miss_col3:
@@ -281,9 +297,17 @@ if uploaded_file is not None:
                     md = "| 排名 | 尾数 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (t, miss, l_miss, avg_int, rate) in enumerate(tail_list_disp, 1):
                         is_inflection = (miss >= l_miss)
-                        t_str = f"**{t}尾** 🚨" if is_inflection else f"{t}尾"
+                        is_high_rate = (rate >= 0.4)
+                        
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        
+                        t_str = f"**{t}尾**{tags}" if (is_inflection or is_high_rate) else f"{t}尾"
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        md += f"| {r} | {t_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        
+                        md += f"| {r} | {t_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
                 with miss_col4:
@@ -300,9 +324,17 @@ if uploaded_file is not None:
                     md = "| 排名 | 头数 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: |\n"
                     for r, (h, miss, l_miss, avg_int, rate) in enumerate(head_list_disp, 1):
                         is_inflection = (miss >= l_miss)
-                        h_str = f"**{h}头** 🚨" if is_inflection else f"{h}头"
+                        is_high_rate = (rate >= 0.4)
+                        
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        
+                        h_str = f"**{h}头**{tags}" if (is_inflection or is_high_rate) else f"{h}头"
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | **{rate:.2f}** |\n"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        
+                        md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
             # ==========================================
