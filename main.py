@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (拐点+高欲出全高亮版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯精准剔除+拐点特赦智能控码")
+st.title("📊 开奖记录全维度综合统计看板 (含15码反向杀号版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯拐点特赦选号 ｜ ❌综合分析杀15码")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -176,12 +176,13 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 简洁直观的四大板块
-            tab1, tab2, tab3, tab4 = st.tabs([
+            # 扩展为五大板块
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
-                "🎯 4. 剔除与拐点特赦智能选号"
+                "🎯 4. 剔除与拐点特赦智能选号",
+                "❌ 5. 综合分析反向杀号 (15码)"
             ])
 
             # ==========================================
@@ -222,7 +223,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨拐点 🚨 + 高欲出 🔥 全标记版)
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
@@ -244,15 +245,12 @@ if uploaded_file is not None:
                     for r, (n, miss, l_miss, avg_int, rate) in enumerate(num_list, 1):
                         is_inflection = (miss >= l_miss)
                         is_high_rate = (rate >= 0.4)
-                        
                         tags = ""
                         if is_inflection: tags += " 🚨"
                         if is_high_rate: tags += " 🔥"
-                        
                         n_str = f"**{n:02d}**{tags}" if (is_inflection or is_high_rate) else f"{n:02d}"
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
                         rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        
                         md += f"| {r} | {n_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
                     
@@ -271,15 +269,12 @@ if uploaded_file is not None:
                     for r, (z, miss, l_miss, avg_int, rate) in enumerate(zodiac_list, 1):
                         is_inflection = (miss >= l_miss)
                         is_high_rate = (rate >= 0.4)
-                        
                         tags = ""
                         if is_inflection: tags += " 🚨"
                         if is_high_rate: tags += " 🔥"
-                        
                         z_str = f"**{z}**{tags}" if (is_inflection or is_high_rate) else z
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
                         rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        
                         md += f"| {r} | {z_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
                     
@@ -298,15 +293,12 @@ if uploaded_file is not None:
                     for r, (t, miss, l_miss, avg_int, rate) in enumerate(tail_list_disp, 1):
                         is_inflection = (miss >= l_miss)
                         is_high_rate = (rate >= 0.4)
-                        
                         tags = ""
                         if is_inflection: tags += " 🚨"
                         if is_high_rate: tags += " 🔥"
-                        
                         t_str = f"**{t}尾**{tags}" if (is_inflection or is_high_rate) else f"{t}尾"
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
                         rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        
                         md += f"| {r} | {t_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
@@ -325,15 +317,12 @@ if uploaded_file is not None:
                     for r, (h, miss, l_miss, avg_int, rate) in enumerate(head_list_disp, 1):
                         is_inflection = (miss >= l_miss)
                         is_high_rate = (rate >= 0.4)
-                        
                         tags = ""
                         if is_inflection: tags += " 🚨"
                         if is_high_rate: tags += " 🔥"
-                        
                         h_str = f"**{h}头**{tags}" if (is_inflection or is_high_rate) else f"{h}头"
                         miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
                         rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        
                         md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
@@ -409,22 +398,16 @@ if uploaded_file is not None:
                     t = n % 10
                     z = get_zodiac_of_number(n)
                     
-                    # 规则 1：生肖欲出率 < 0.4 且 本次遗漏 < 上次遗漏
                     r1_remove = (zodiac_rates[z] < 0.4) and (zodiac_omission[z] < zodiac_last_omission[z])
-                    
-                    # 规则 2：尾数欲出率 < 0.4 且 本次遗漏 < 上次遗漏
                     r2_remove = (tail_rates[t] < 0.4) and (tail_omission[t] < tail_last_omission[t])
-                    
-                    # 规则 3：特赦恢复条件（生肖本次遗漏 >= 上次遗漏 OR 尾数本次遗漏 >= 上次遗漏）
                     can_restore = (zodiac_omission[z] >= zodiac_last_omission[z]) or (tail_omission[t] >= tail_last_omission[t])
                     
-                    # 判定逻辑：被规则1或规则2标记删除，且无法被规则3恢复 -> 剔除；否则保留
                     if (r1_remove or r2_remove) and not can_restore:
-                        continue # 被删除，不收入选号网
+                        continue
                     else:
                         selected_numbers.append(n)
                 
-                selected_numbers.sort() # 严格从小到大按顺序排列
+                selected_numbers.sort()
                 formatted_nums = [f"{x:02d}" for x in selected_numbers]
                 
                 st.write("---")
@@ -436,6 +419,57 @@ if uploaded_file is not None:
                 else:
                     st.info("提示：当前数据周期内没有符合条件的号码。")
                 st.write("---")
+
+            # ==========================================
+            # ❌ TAB 5: ✨ 综合分析反向杀号 (精选 15 码) (🔥新功能)
+            # ==========================================
+            with tab5:
+                st.subheader("❌ 综合概率模型：精选最不可能出现的 15 个号码 (反向杀号池)")
+                st.markdown("""
+                💡 **计算模型**：融合【生肖欲出率(35%) + 尾数欲出率(35%) + 号码欲出率(30%)】三维权重，
+                并对未触底拐点（当前遗漏 < 上次遗漏）的弱势指标执行智能扣分，精准筛选出全盘概率势能最低的 **15 个危险冷杂码**。
+                """)
+                
+                # 杀号 Scoring 评分计算
+                exclusion_scores = []
+                for n in range(1, 50):
+                    t = n % 10
+                    z = get_zodiac_of_number(n)
+                    
+                    # 基础欲出几率综合分
+                    score = 0.35 * zodiac_rates[z] + 0.35 * tail_rates[t] + 0.30 * num_rates[n]
+                    
+                    # 拐点缺失扣分（未触底反弹的概率更低）
+                    if zodiac_omission[z] < zodiac_last_omission[z]:
+                        score -= 0.15
+                    if tail_omission[t] < tail_last_omission[t]:
+                        score -= 0.15
+                    if num_omission[n] < num_last_omission[n]:
+                        score -= 0.10
+                        
+                    exclusion_scores.append((n, score, zodiac_rates[z], tail_rates[t], num_rates[n], z, t))
+                
+                # 升序排列：得分最低的15个号即为最不可能出现的号码
+                exclusion_scores.sort(key=lambda x: (x[1], x[0]))
+                
+                top_15_tuples = exclusion_scores[:15]
+                top_15_nums = [x[0] for x in top_15_tuples]
+                top_15_nums.sort() # 严格从小到大重新排列
+                formatted_top_15 = [f"{x:02d}" for x in top_15_nums]
+                
+                st.write("---")
+                st.error(f"🚫 **【综合分析反向杀号池】本期精选最不可能开出的 15 个号码（已按从小到大重排）：**")
+                st.markdown("👇 **实战极简配置：请点击右上方小图标全选复制，直接用于排除/杀号：**")
+                
+                st.code(", ".join(formatted_top_15), language="text")
+                st.write("---")
+                
+                # 展现这15个杀码的详细概率拆解表
+                st.markdown("### 🔍 15 个杀码的定量参数与扣分明细表")
+                details_md = "| 排名 | 杀码 | 生肖/尾数 | 综合风险分 | 生肖欲出率 | 尾数欲出率 | 号码欲出率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                for rank, (n, sc, z_r, t_r, n_r, z, t) in enumerate(top_15_tuples, 1):
+                    details_md += f"| {rank} | **{n:02d}** | {z} / {t}尾 | **{sc:.3f}** | {z_r:.2f} | {t_r:.2f} | {n_r:.2f} |\n"
+                st.markdown(details_md)
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
