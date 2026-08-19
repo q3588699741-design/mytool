@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含15码反向杀号版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 纵向状态转移矩阵 ｜ 🎯拐点特赦选号 ｜ ❌综合分析杀15码")
+st.title("📊 开奖记录全维度综合统计看板 (含生肖分区空间精细版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 生肖空间分区 ｜ 纵向状态转移 ｜ 🎯选号与杀号引擎")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -56,114 +56,120 @@ if uploaded_file is not None:
             def get_zodiac_of_number(n):
                 return base_zodiacs[(n - 1) % 12]
 
-            # 号码出现总数统计
+            # 生肖分区体系定义
+            zodiac_zones_2 = {
+                '上区': ['马', '蛇', '龙', '兔', '虎', '牛'],
+                '下区': ['鼠', '猪', '狗', '鸡', '猴', '羊']
+            }
+            zodiac_zones_3 = {
+                '左区': ['马', '兔', '鼠', '鸡'],
+                '中区': ['蛇', '虎', '猪', '猴'],
+                '右区': ['龙', '牛', '狗', '羊']
+            }
+            all_zones = {**zodiac_zones_2, **zodiac_zones_3}
+
+            # 基础出现总数统计
             num_counts = defaultdict(int)
             tail_counts = defaultdict(int)
             zodiac_counts = defaultdict(int)
             head_counts_dict = defaultdict(int)
+            zone_counts = defaultdict(int)
             
             for num, zodiac in parsed_data:
                 num_counts[num] += 1
                 tail_counts[num % 10] += 1
                 zodiac_counts[zodiac] += 1
                 head_counts_dict[num // 10] += 1
+                for z_name, z_list in all_zones.items():
+                    if zodiac in z_list:
+                        zone_counts[z_name] += 1
 
-            # 🛠️ 建立全量位置索引，用于精准提炼“当前遗漏”与“上次遗漏（最近开出间隔）”
+            # 🛠️ 建立全量位置索引
             num_indices = defaultdict(list)
             tail_indices = defaultdict(list)
             zodiac_indices = defaultdict(list)
             head_indices = defaultdict(list)
+            zone_indices = defaultdict(list)
             
             for i, (num, zodiac) in enumerate(parsed_data):
                 num_indices[num].append(i)
                 tail_indices[num % 10].append(i)
                 zodiac_indices[zodiac].append(i)
                 head_indices[num // 10].append(i)
+                for z_name, z_list in all_zones.items():
+                    if zodiac in z_list:
+                        zone_indices[z_name].append(i)
 
-            # 1. 号码双重遗漏计算
+            # 1. 号码双重遗漏
             num_omission = {}
             num_last_omission = {}
             for n in range(1, 50):
                 idxs = num_indices[n]
                 if idxs:
                     num_omission[n] = (total_records - 1) - idxs[-1]
-                    if len(idxs) >= 2:
-                        num_last_omission[n] = idxs[-1] - idxs[-2] - 1
-                    else:
-                        num_last_omission[n] = idxs[-1]
+                    num_last_omission[n] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
                 else:
                     num_omission[n] = total_records
                     num_last_omission[n] = 0
 
-            # 2. 生肖双重遗漏计算
+            # 2. 生肖双重遗漏
             zodiac_omission = {}
             zodiac_last_omission = {}
             for z in all_zodiacs:
                 idxs = zodiac_indices[z]
                 if idxs:
                     zodiac_omission[z] = (total_records - 1) - idxs[-1]
-                    if len(idxs) >= 2:
-                        zodiac_last_omission[z] = idxs[-1] - idxs[-2] - 1
-                    else:
-                        zodiac_last_omission[z] = idxs[-1]
+                    zodiac_last_omission[z] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
                 else:
                     zodiac_omission[z] = total_records
                     zodiac_last_omission[z] = 0
 
-            # 3. 尾数双重遗漏计算
+            # 3. 尾数双重遗漏
             tail_omission = {}
             tail_last_omission = {}
             for t in all_tails:
                 idxs = tail_indices[t]
                 if idxs:
                     tail_omission[t] = (total_records - 1) - idxs[-1]
-                    if len(idxs) >= 2:
-                        tail_last_omission[t] = idxs[-1] - idxs[-2] - 1
-                    else:
-                        tail_last_omission[t] = idxs[-1]
+                    tail_last_omission[t] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
                 else:
                     tail_omission[t] = total_records
                     tail_last_omission[t] = 0
 
-            # 4. 头数双重遗漏计算
+            # 4. 头数双重遗漏
             head_omission = {}
             head_last_omission = {}
             for h in all_heads:
                 idxs = head_indices[h]
                 if idxs:
                     head_omission[h] = (total_records - 1) - idxs[-1]
-                    if len(idxs) >= 2:
-                        head_last_omission[h] = idxs[-1] - idxs[-2] - 1
-                    else:
-                        head_last_omission[h] = idxs[-1]
+                    head_last_omission[h] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
                 else:
                     head_omission[h] = total_records
                     head_last_omission[h] = 0
 
+            # 5. 生肖分区双重遗漏与欲出几率 (✨新增)
+            zone_omission = {}
+            zone_last_omission = {}
+            zone_rates = {}
+            for z_name in all_zones:
+                idxs = zone_indices[z_name]
+                if idxs:
+                    zone_omission[z_name] = (total_records - 1) - idxs[-1]
+                    zone_last_omission[z_name] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
+                else:
+                    zone_omission[z_name] = total_records
+                    zone_last_omission[z_name] = 0
+                
+                cnt = zone_counts[z_name]
+                avg_int = (total_records / cnt) if cnt > 0 else total_records
+                zone_rates[z_name] = zone_omission[z_name] / avg_int
+
             # 计算全局欲出几率
-            tail_rates = {}
-            for t in all_tails:
-                cnt = tail_counts[t]
-                avg_int = (total_records / cnt) if cnt > 0 else total_records
-                tail_rates[t] = tail_omission[t] / avg_int
-
-            zodiac_rates = {}
-            for z in all_zodiacs:
-                cnt = zodiac_counts[z]
-                avg_int = (total_records / cnt) if cnt > 0 else total_records
-                zodiac_rates[z] = zodiac_omission[z] / avg_int
-
-            num_rates = {}
-            for n in range(1, 50):
-                cnt = num_counts[n]
-                avg_int = (total_records / cnt) if cnt > 0 else total_records
-                num_rates[n] = num_omission[n] / avg_int
-
-            head_rates = {}
-            for h in all_heads:
-                cnt = head_counts_dict[h]
-                avg_int = (total_records / cnt) if cnt > 0 else total_records
-                head_rates[h] = head_omission[h] / avg_int
+            tail_rates = {t: tail_omission[t] / ((total_records / tail_counts[t]) if tail_counts[t] > 0 else total_records) for t in all_tails}
+            zodiac_rates = {z: zodiac_omission[z] / ((total_records / zodiac_counts[z]) if zodiac_counts[z] > 0 else total_records) for z in all_zodiacs}
+            num_rates = {n: num_omission[n] / ((total_records / num_counts[n]) if num_counts[n] > 0 else total_records) for n in range(1, 50)}
+            head_rates = {h: head_omission[h] / ((total_records / head_counts_dict[h]) if head_counts_dict[h] > 0 else total_records) for h in all_heads}
 
             # 计算状态转移数据
             tail_transitions = defaultdict(list)
@@ -176,7 +182,7 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 扩展为五大板块
+            # 五大核心板块
             tab1, tab2, tab3, tab4, tab5 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
@@ -205,7 +211,7 @@ if uploaded_file is not None:
                     st.markdown("### 🎯 尾数冷热排行 (0-9)")
                     tail_hot_data = [(t, tail_counts[t], (tail_counts[t]/total_records*100 if total_records>0 else 0.0)) for t in all_tails]
                     tail_hot_data.sort(key=lambda x: (-x[1], x[0]))
-                    md = "| 排名 | 尾数 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: | :---: |\n"
+                    md = "| 排名 | 尾数 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: |\n"
                     for rank, (t, cnt, pct) in enumerate(tail_hot_data, 1):
                         tail_str = f"**{t}尾**" if rank <= 3 and cnt > 0 else f"{t}尾"
                         flag = "🔥" if rank <= 3 and cnt > 0 else ("❄️" if cnt == 0 else "")
@@ -215,7 +221,7 @@ if uploaded_file is not None:
                     st.markdown("### 🔮 生肖冷热排行")
                     zodiac_hot_data = [(z, zodiac_counts[z], (zodiac_counts[z]/total_records*100 if total_records>0 else 0.0)) for z in all_zodiacs]
                     zodiac_hot_data.sort(key=lambda x: (-x[1], all_zodiacs.index(x[0])))
-                    md = "| 排名 | 生肖 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: | :---: |\n"
+                    md = "| 排名 | 生肖 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: |\n"
                     for rank, (z, cnt, pct) in enumerate(zodiac_hot_data, 1):
                         zodiac_str = f"**{z}**" if rank <= 3 and cnt > 0 else z
                         flag = "🔥" if rank <= 3 and cnt > 0 else ("❄️" if cnt == 0 else "")
@@ -223,11 +229,13 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨扩展生肖分区版)
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
-                st.caption("💡 **标注说明**：带有 **🚨 警报** 代表【当前遗漏 $\ge$ 上次遗漏】（拐点）；带有 **🔥 火焰** 代表【欲出几率 $\ge$ 0.40】（高欲出热度区）！")
+                st.caption("💡 **标注说明**：带有 **🚨 警报** 代表【当前遗漏 $\ge$ 上次遗漏】（触底拐点）；带有 **🔥 火焰** 代表【欲出几率 $\ge$ 0.40】（高热度区）！")
+                
+                # 第一层：号码 / 生肖 / 尾数 / 头数
                 miss_col1, miss_col2, miss_col3, miss_col4 = st.columns(4)
                 
                 with miss_col1:
@@ -326,6 +334,61 @@ if uploaded_file is not None:
                         md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
+                # 第二层：生肖 5 大空间分区深度统计 (✨全新专属看板)
+                st.write("---")
+                st.subheader("🔮 12 生肖空间形态分区（上下区 / 左中右区）遗漏与欲出深度统计")
+                zone_col1, zone_col2 = st.columns(2)
+                
+                with zone_col1:
+                    st.markdown("### 🌗 生肖二分空间 (上下区)")
+                    z2_list = []
+                    for z_name, z_members in zodiac_zones_2.items():
+                        miss = zone_omission[z_name]
+                        l_miss = zone_last_omission[z_name]
+                        rate = zone_rates[z_name]
+                        cnt = zone_counts[z_name]
+                        avg_int = (total_records / cnt) if cnt > 0 else total_records
+                        z2_list.append((z_name, "、".join(z_members), cnt, miss, l_miss, avg_int, rate))
+                    z2_list.sort(key=lambda x: -x[6])
+                    
+                    z2_md = "| 排名 | 分区名称 | 包含生肖 | 历史开出 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                    for r, (zn, zm, cnt, miss, l_miss, avg_int, rate) in enumerate(z2_list, 1):
+                        is_inflection = (miss >= l_miss)
+                        is_high_rate = (rate >= 0.4)
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        zn_str = f"**{zn}**{tags}" if (is_inflection or is_high_rate) else zn
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        z2_md += f"| {r} | {zn_str} | `{zm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
+                    st.markdown(z2_md)
+                    
+                with zone_col2:
+                    st.markdown("### 🧭 生肖三分空间 (左中右区)")
+                    z3_list = []
+                    for z_name, z_members in zodiac_zones_3.items():
+                        miss = zone_omission[z_name]
+                        l_miss = zone_last_omission[z_name]
+                        rate = zone_rates[z_name]
+                        cnt = zone_counts[z_name]
+                        avg_int = (total_records / cnt) if cnt > 0 else total_records
+                        z3_list.append((z_name, "、".join(z_members), cnt, miss, l_miss, avg_int, rate))
+                    z3_list.sort(key=lambda x: -x[6])
+                    
+                    z3_md = "| 排名 | 分区名称 | 包含生肖 | 历史开出 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                    for r, (zn, zm, cnt, miss, l_miss, avg_int, rate) in enumerate(z3_list, 1):
+                        is_inflection = (miss >= l_miss)
+                        is_high_rate = (rate >= 0.4)
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        zn_str = f"**{zn}**{tags}" if (is_inflection or is_high_rate) else zn
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        z3_md += f"| {r} | {zn_str} | `{zm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
+                    st.markdown(z3_md)
+
             # ==========================================
             # 🔄 TAB 3: 前后行状态转移矩阵
             # ==========================================
@@ -421,7 +484,7 @@ if uploaded_file is not None:
                 st.write("---")
 
             # ==========================================
-            # ❌ TAB 5: ✨ 综合分析反向杀号 (精选 15 码) (🔥新功能)
+            # ❌ TAB 5: ✨ 综合分析反向杀号 (精选 15 码)
             # ==========================================
             with tab5:
                 st.subheader("❌ 综合概率模型：精选最不可能出现的 15 个号码 (反向杀号池)")
@@ -430,16 +493,13 @@ if uploaded_file is not None:
                 并对未触底拐点（当前遗漏 < 上次遗漏）的弱势指标执行智能扣分，精准筛选出全盘概率势能最低的 **15 个危险冷杂码**。
                 """)
                 
-                # 杀号 Scoring 评分计算
                 exclusion_scores = []
                 for n in range(1, 50):
                     t = n % 10
                     z = get_zodiac_of_number(n)
                     
-                    # 基础欲出几率综合分
                     score = 0.35 * zodiac_rates[z] + 0.35 * tail_rates[t] + 0.30 * num_rates[n]
                     
-                    # 拐点缺失扣分（未触底反弹的概率更低）
                     if zodiac_omission[z] < zodiac_last_omission[z]:
                         score -= 0.15
                     if tail_omission[t] < tail_last_omission[t]:
@@ -449,12 +509,11 @@ if uploaded_file is not None:
                         
                     exclusion_scores.append((n, score, zodiac_rates[z], tail_rates[t], num_rates[n], z, t))
                 
-                # 升序排列：得分最低的15个号即为最不可能出现的号码
                 exclusion_scores.sort(key=lambda x: (x[1], x[0]))
                 
                 top_15_tuples = exclusion_scores[:15]
                 top_15_nums = [x[0] for x in top_15_tuples]
-                top_15_nums.sort() # 严格从小到大重新排列
+                top_15_nums.sort()
                 formatted_top_15 = [f"{x:02d}" for x in top_15_nums]
                 
                 st.write("---")
@@ -464,7 +523,6 @@ if uploaded_file is not None:
                 st.code(", ".join(formatted_top_15), language="text")
                 st.write("---")
                 
-                # 展现这15个杀码的详细概率拆解表
                 st.markdown("### 🔍 15 个杀码的定量参数与扣分明细表")
                 details_md = "| 排名 | 杀码 | 生肖/尾数 | 综合风险分 | 生肖欲出率 | 尾数欲出率 | 号码欲出率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
                 for rank, (n, sc, z_r, t_r, n_r, z, t) in enumerate(top_15_tuples, 1):
