@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含生肖分区空间精细版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 生肖空间分区 ｜ 纵向状态转移 ｜ 🎯选号与杀号引擎")
+st.title("📊 开奖记录全维度综合统计看板 (含空间形态拐点选号版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 生肖空间分区 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ ⚡空间形态拐点选号")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -148,7 +148,7 @@ if uploaded_file is not None:
                     head_omission[h] = total_records
                     head_last_omission[h] = 0
 
-            # 5. 生肖分区双重遗漏与欲出几率 (✨新增)
+            # 5. 生肖分区双重遗漏与欲出几率
             zone_omission = {}
             zone_last_omission = {}
             zone_rates = {}
@@ -182,13 +182,14 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 五大核心板块
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            # 六大核心板块
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
                 "🎯 4. 剔除与拐点特赦智能选号",
-                "❌ 5. 综合分析反向杀号 (15码)"
+                "❌ 5. 综合分析反向杀号 (15码)",
+                "⚡ 6. 空间形态拐点选号"
             ])
 
             # ==========================================
@@ -221,7 +222,7 @@ if uploaded_file is not None:
                     st.markdown("### 🔮 生肖冷热排行")
                     zodiac_hot_data = [(z, zodiac_counts[z], (zodiac_counts[z]/total_records*100 if total_records>0 else 0.0)) for z in all_zodiacs]
                     zodiac_hot_data.sort(key=lambda x: (-x[1], all_zodiacs.index(x[0])))
-                    md = "| 排名 | 生肖 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: |\n"
+                    md = "| 排名 | 生肖 | 出现次数 | 占比概率 |\n| :---: | :---: |\n"
                     for rank, (z, cnt, pct) in enumerate(zodiac_hot_data, 1):
                         zodiac_str = f"**{z}**" if rank <= 3 and cnt > 0 else z
                         flag = "🔥" if rank <= 3 and cnt > 0 else ("❄️" if cnt == 0 else "")
@@ -229,7 +230,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (✨扩展生肖分区版)
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
@@ -334,7 +335,7 @@ if uploaded_file is not None:
                         md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
-                # 第二层：生肖 5 大空间分区深度统计 (✨全新专属看板)
+                # 第二层：生肖 5 大空间分区深度统计
                 st.write("---")
                 st.subheader("🔮 12 生肖空间形态分区（上下区 / 左中右区）遗漏与欲出深度统计")
                 zone_col1, zone_col2 = st.columns(2)
@@ -528,6 +529,84 @@ if uploaded_file is not None:
                 for rank, (n, sc, z_r, t_r, n_r, z, t) in enumerate(top_15_tuples, 1):
                     details_md += f"| {rank} | **{n:02d}** | {z} / {t}尾 | **{sc:.3f}** | {z_r:.2f} | {t_r:.2f} | {n_r:.2f} |\n"
                 st.markdown(details_md)
+
+            # ==========================================
+            # ⚡ TAB 6: ✨ 生肖空间形态拐点选号 (✨功能六全新上线)
+            # ==========================================
+            with tab6:
+                st.subheader("⚡ 生肖空间形态分区（带闪电拐点）智能号码提取引擎")
+                st.markdown("""
+                💡 **空间形态选号逻辑**：
+                * 自动扫描功能二中 **上下区（二分空间）** 与 **左中右区（三分空间）** 的遗漏触底状态；
+                * 提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的分区所覆盖的全部生肖，并自动反查打捞对应的 1-49 特码。
+                """)
+                
+                # 1. 抓取带闪电的二分空间 (上下区)
+                triggered_z2_zones = [zn for zn in zodiac_zones_2 if zone_omission[zn] >= zone_last_omission[zn]]
+                z2_zodiacs_set = set()
+                for zn in triggered_z2_zones:
+                    z2_zodiacs_set.update(zodiac_zones_2[zn])
+                
+                z2_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in z2_zodiacs_set]
+                z2_nums.sort()
+                
+                # 2. 抓取带闪电的三分空间 (左中右区)
+                triggered_z3_zones = [zn for zn in zodiac_zones_3 if zone_omission[zn] >= zone_last_omission[zn]]
+                z3_zodiacs_set = set()
+                for zn in triggered_z3_zones:
+                    z3_zodiacs_set.update(zodiac_zones_3[zn])
+                
+                z3_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in z3_zodiacs_set]
+                z3_nums.sort()
+                
+                # 3. 计算双区重叠核心交集 (AND) 与 综合并集 (OR)
+                strict_zodiacs_set = z2_zodiacs_set.intersection(z3_zodiacs_set)
+                strict_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in strict_zodiacs_set]
+                strict_nums.sort()
+                
+                combined_zodiacs_set = z2_zodiacs_set.union(z3_zodiacs_set)
+                combined_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in combined_zodiacs_set]
+                combined_nums.sort()
+                
+                # ----------------- 黄金置顶区：双区交集核心池 -----------------
+                st.write("---")
+                st.success(f"🏆 **【双区交集超级核心池】（二分闪电 ∩ 三分闪电 严格交集）共 {len(strict_nums)} 个特码：**")
+                st.caption(f"🎯 **涵盖核心生肖**：`{'、'.join(sorted(list(strict_zodiacs_set)))}` ｜ 属于双重空间形态共振区，码数极度浓缩，适合精准重击！")
+                if strict_nums:
+                    st.code(", ".join([f"{x:02d}" for x in strict_nums]), language="text")
+                else:
+                    st.info("提示：本期二分与三分闪电分区无重合交集生肖。")
+                st.write("---")
+                
+                # ----------------- 分区分栏展示 -----------------
+                c_z1, c_z2, c_z3 = st.columns(3)
+                
+                with c_z1:
+                    st.markdown(f"🌗 **二分空间(上下区)闪电池 ({len(z2_nums)} 码)**")
+                    st.caption(f"🚨 **触发分区**：{', '.join(triggered_z2_zones) if triggered_z2_zones else '无'}")
+                    st.caption(f"🔮 **涵盖生肖**：`{'、'.join(sorted(list(z2_zodiacs_set)))}`")
+                    if z2_nums:
+                        st.code(", ".join([f"{x:02d}" for x in z2_nums]), language="text")
+                    else:
+                        st.info("暂无二分区触发闪电")
+                        
+                with c_z2:
+                    st.markdown(f"🧭 **三分空间(左中右)闪电池 ({len(z3_nums)} 码)**")
+                    st.caption(f"🚨 **触发分区**：{', '.join(triggered_z3_zones) if triggered_z3_zones else '无'}")
+                    st.caption(f"🔮 **涵盖生肖**：`{'、'.join(sorted(list(z3_zodiacs_set)))}`")
+                    if z3_nums:
+                        st.code(", ".join([f"{x:02d}" for x in z3_nums]), language="text")
+                    else:
+                        st.info("暂无三分区触发闪电")
+                        
+                with c_z3:
+                    st.markdown(f"🛡️ **空间形态全包抄池(OR并集) ({len(combined_nums)} 码)**")
+                    st.caption("🌐 **入选标准**：满足任意一个带闪电分区的生肖特码")
+                    st.caption(f"🔮 **涵盖生肖**：`{'、'.join(sorted(list(combined_zodiacs_set)))}`")
+                    if combined_nums:
+                        st.code(", ".join([f"{x:02d}" for x in combined_nums]), language="text")
+                    else:
+                        st.info("暂无空间形态号码")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
