@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含空间形态拐点选号版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 生肖空间分区 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ ⚡空间形态拐点选号")
+st.title("📊 开奖记录全维度综合统计看板 (含四季生肖拐点选号版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季生肖 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ ⚡空间形态 ｜ 🌸四季拐点")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -56,7 +56,7 @@ if uploaded_file is not None:
             def get_zodiac_of_number(n):
                 return base_zodiacs[(n - 1) % 12]
 
-            # 生肖分区体系定义
+            # 生肖空间形态与四季体系定义
             zodiac_zones_2 = {
                 '上区': ['马', '蛇', '龙', '兔', '虎', '牛'],
                 '下区': ['鼠', '猪', '狗', '鸡', '猴', '羊']
@@ -66,6 +66,12 @@ if uploaded_file is not None:
                 '中区': ['蛇', '虎', '猪', '猴'],
                 '右区': ['龙', '牛', '狗', '羊']
             }
+            zodiac_seasons = {
+                '春肖': ['虎', '兔', '龙'],
+                '夏肖': ['蛇', '马', '羊'],
+                '秋肖': ['猴', '鸡', '狗'],
+                '冬肖': ['猪', '鼠', '牛']
+            }
             all_zones = {**zodiac_zones_2, **zodiac_zones_3}
 
             # 基础出现总数统计
@@ -74,6 +80,7 @@ if uploaded_file is not None:
             zodiac_counts = defaultdict(int)
             head_counts_dict = defaultdict(int)
             zone_counts = defaultdict(int)
+            season_counts = defaultdict(int)
             
             for num, zodiac in parsed_data:
                 num_counts[num] += 1
@@ -83,6 +90,9 @@ if uploaded_file is not None:
                 for z_name, z_list in all_zones.items():
                     if zodiac in z_list:
                         zone_counts[z_name] += 1
+                for s_name, s_list in zodiac_seasons.items():
+                    if zodiac in s_list:
+                        season_counts[s_name] += 1
 
             # 🛠️ 建立全量位置索引
             num_indices = defaultdict(list)
@@ -90,6 +100,7 @@ if uploaded_file is not None:
             zodiac_indices = defaultdict(list)
             head_indices = defaultdict(list)
             zone_indices = defaultdict(list)
+            season_indices = defaultdict(list)
             
             for i, (num, zodiac) in enumerate(parsed_data):
                 num_indices[num].append(i)
@@ -99,6 +110,9 @@ if uploaded_file is not None:
                 for z_name, z_list in all_zones.items():
                     if zodiac in z_list:
                         zone_indices[z_name].append(i)
+                for s_name, s_list in zodiac_seasons.items():
+                    if zodiac in s_list:
+                        season_indices[s_name].append(i)
 
             # 1. 号码双重遗漏
             num_omission = {}
@@ -148,7 +162,7 @@ if uploaded_file is not None:
                     head_omission[h] = total_records
                     head_last_omission[h] = 0
 
-            # 5. 生肖分区双重遗漏与欲出几率
+            # 5. 生肖空间分区双重遗漏与欲出几率
             zone_omission = {}
             zone_last_omission = {}
             zone_rates = {}
@@ -164,6 +178,23 @@ if uploaded_file is not None:
                 cnt = zone_counts[z_name]
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 zone_rates[z_name] = zone_omission[z_name] / avg_int
+
+            # 6. 四季生肖双重遗漏与欲出几率 (✨新增)
+            season_omission = {}
+            season_last_omission = {}
+            season_rates = {}
+            for s_name in zodiac_seasons:
+                idxs = season_indices[s_name]
+                if idxs:
+                    season_omission[s_name] = (total_records - 1) - idxs[-1]
+                    season_last_omission[s_name] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
+                else:
+                    season_omission[s_name] = total_records
+                    season_last_omission[s_name] = 0
+                
+                cnt = season_counts[s_name]
+                avg_int = (total_records / cnt) if cnt > 0 else total_records
+                season_rates[s_name] = season_omission[s_name] / avg_int
 
             # 计算全局欲出几率
             tail_rates = {t: tail_omission[t] / ((total_records / tail_counts[t]) if tail_counts[t] > 0 else total_records) for t in all_tails}
@@ -182,14 +213,15 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 六大核心板块
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            # 七大核心板块
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
                 "🎯 4. 剔除与拐点特赦智能选号",
                 "❌ 5. 综合分析反向杀号 (15码)",
-                "⚡ 6. 空间形态拐点选号"
+                "⚡ 6. 空间形态拐点选号",
+                "🌸 7. 四季生肖拐点选号"
             ])
 
             # ==========================================
@@ -212,7 +244,7 @@ if uploaded_file is not None:
                     st.markdown("### 🎯 尾数冷热排行 (0-9)")
                     tail_hot_data = [(t, tail_counts[t], (tail_counts[t]/total_records*100 if total_records>0 else 0.0)) for t in all_tails]
                     tail_hot_data.sort(key=lambda x: (-x[1], x[0]))
-                    md = "| 排名 | 尾数 | 出现次数 | 占比概率 |\n| :---: | :---: | :---: |\n"
+                    md = "| 排名 | 尾数 | 出现次数 | 占比概率 |\n| :---: | :---: |\n"
                     for rank, (t, cnt, pct) in enumerate(tail_hot_data, 1):
                         tail_str = f"**{t}尾**" if rank <= 3 and cnt > 0 else f"{t}尾"
                         flag = "🔥" if rank <= 3 and cnt > 0 else ("❄️" if cnt == 0 else "")
@@ -230,7 +262,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (含四季生肖)
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
@@ -335,10 +367,10 @@ if uploaded_file is not None:
                         md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
-                # 第二层：生肖 5 大空间分区深度统计
+                # 第二层：生肖空间分区与四季生肖形态深度统计 (3 栏展示)
                 st.write("---")
-                st.subheader("🔮 12 生肖空间形态分区（上下区 / 左中右区）遗漏与欲出深度统计")
-                zone_col1, zone_col2 = st.columns(2)
+                st.subheader("🔮 生肖形态分区（上下区 / 左中右区 / 春夏秋冬四季肖）遗漏与欲出深度统计")
+                zone_col1, zone_col2, zone_col3 = st.columns(3)
                 
                 with zone_col1:
                     st.markdown("### 🌗 生肖二分空间 (上下区)")
@@ -389,6 +421,31 @@ if uploaded_file is not None:
                         rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
                         z3_md += f"| {r} | {zn_str} | `{zm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(z3_md)
+
+                with zone_col3:
+                    st.markdown("### 🌸 四季生肖空间 (春夏秋冬)")
+                    season_list = []
+                    for s_name, s_members in zodiac_seasons.items():
+                        miss = season_omission[s_name]
+                        l_miss = season_last_omission[s_name]
+                        rate = season_rates[s_name]
+                        cnt = season_counts[s_name]
+                        avg_int = (total_records / cnt) if cnt > 0 else total_records
+                        season_list.append((s_name, "、".join(s_members), cnt, miss, l_miss, avg_int, rate))
+                    season_list.sort(key=lambda x: -x[6])
+                    
+                    season_md = "| 排名 | 季节肖 | 包含生肖 | 历史开出 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                    for r, (sn, sm, cnt, miss, l_miss, avg_int, rate) in enumerate(season_list, 1):
+                        is_inflection = (miss >= l_miss)
+                        is_high_rate = (rate >= 0.4)
+                        tags = ""
+                        if is_inflection: tags += " 🚨"
+                        if is_high_rate: tags += " 🔥"
+                        sn_str = f"**{sn}**{tags}" if (is_inflection or is_high_rate) else sn
+                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
+                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
+                        season_md += f"| {r} | {sn_str} | `{sm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
+                    st.markdown(season_md)
 
             # ==========================================
             # 🔄 TAB 3: 前后行状态转移矩阵
@@ -531,7 +588,7 @@ if uploaded_file is not None:
                 st.markdown(details_md)
 
             # ==========================================
-            # ⚡ TAB 6: ✨ 生肖空间形态拐点选号 (✨功能六全新上线)
+            # ⚡ TAB 6: ✨ 生肖空间形态拐点选号
             # ==========================================
             with tab6:
                 st.subheader("⚡ 生肖空间形态分区（带闪电拐点）智能号码提取引擎")
@@ -568,7 +625,6 @@ if uploaded_file is not None:
                 combined_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in combined_zodiacs_set]
                 combined_nums.sort()
                 
-                # ----------------- 黄金置顶区：双区交集核心池 -----------------
                 st.write("---")
                 st.success(f"🏆 **【双区交集超级核心池】（二分闪电 ∩ 三分闪电 严格交集）共 {len(strict_nums)} 个特码：**")
                 st.caption(f"🎯 **涵盖核心生肖**：`{'、'.join(sorted(list(strict_zodiacs_set)))}` ｜ 属于双重空间形态共振区，码数极度浓缩，适合精准重击！")
@@ -578,7 +634,6 @@ if uploaded_file is not None:
                     st.info("提示：本期二分与三分闪电分区无重合交集生肖。")
                 st.write("---")
                 
-                # ----------------- 分区分栏展示 -----------------
                 c_z1, c_z2, c_z3 = st.columns(3)
                 
                 with c_z1:
@@ -607,6 +662,69 @@ if uploaded_file is not None:
                         st.code(", ".join([f"{x:02d}" for x in combined_nums]), language="text")
                     else:
                         st.info("暂无空间形态号码")
+
+            # ==========================================
+            # 🌸 TAB 7: ✨ 四季生肖拐点选号 (🔥功能七全新上线)
+            # ==========================================
+            with tab7:
+                st.subheader("🌸 四季生肖（春夏秋冬）触底拐点智能选号引擎")
+                st.markdown("""
+                💡 **四季生肖拐点逻辑**：
+                * 自动扫描功能二中 **春肖 (虎兔龙)**、**夏肖 (蛇马羊)**、**秋肖 (猴鸡狗)**、**冬肖 (猪鼠牛)** 的遗漏触底状态；
+                * 提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的季节肖，并自动反查打捞该季节所对应的全部特码。
+                """)
+                
+                # 抓取带闪电的季节肖
+                triggered_seasons = [sn for sn in zodiac_seasons if season_omission[sn] >= season_last_omission[sn]]
+                season_zodiacs_set = set()
+                for sn in triggered_seasons:
+                    season_zodiacs_set.update(zodiac_seasons[sn])
+                
+                season_selected_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in season_zodiacs_set]
+                season_selected_nums.sort()
+                
+                st.write("---")
+                st.success(f"🏆 **【四季闪电拐点精选全包池】本期共命中 {len(triggered_seasons)} 个季节肖，精选特码共 {len(season_selected_nums)} 个：**")
+                st.caption(f"🚨 **本期触发闪电的季节肖**：`{', '.join(triggered_seasons) if triggered_seasons else '暂无'}` ｜ 涵盖生肖：`{'、'.join(sorted(list(season_zodiacs_set)))}`")
+                st.markdown("👇 **请点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
+                
+                if season_selected_nums:
+                    st.code(", ".join([f"{x:02d}" for x in season_selected_nums]), language="text")
+                else:
+                    st.info("提示：本期四季生肖中暂无分区触发遗漏拐点。")
+                st.write("---")
+                
+                # 四季生肖分栏独立展示
+                st.markdown("### 🔍 四季生肖各自状态与对应特码库")
+                sc1, sc2, sc3, sc4 = st.columns(4)
+                
+                with sc1:
+                    is_spr = '春肖' in triggered_seasons
+                    spr_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in zodiac_seasons['春肖']]
+                    st.markdown(f"🌱 **春肖 (虎兔龙) {'🚨 ⚡' if is_spr else ''}**")
+                    st.caption(f"当前遗漏: **{season_omission['春肖']}期** ｜ 上次: {season_last_omission['春肖']}期")
+                    st.code(", ".join([f"{x:02d}" for x in spr_nums]), language="text")
+                    
+                with sc2:
+                    is_sum = '夏肖' in triggered_seasons
+                    sum_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in zodiac_seasons['夏肖']]
+                    st.markdown(f"☀️ **夏肖 (蛇马羊) {'🚨 ⚡' if is_sum else ''}**")
+                    st.caption(f"当前遗漏: **{season_omission['夏肖']}期** ｜ 上次: {season_last_omission['夏肖']}期")
+                    st.code(", ".join([f"{x:02d}" for x in sum_nums]), language="text")
+                    
+                with sc3:
+                    is_aut = '秋肖' in triggered_seasons
+                    aut_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in zodiac_seasons['秋肖']]
+                    st.markdown(f"🍂 **秋肖 (猴鸡狗) {'🚨 ⚡' if is_aut else ''}**")
+                    st.caption(f"当前遗漏: **{season_omission['秋肖']}期** ｜ 上次: {season_last_omission['秋肖']}期")
+                    st.code(", ".join([f"{x:02d}" for x in aut_nums]), language="text")
+                    
+                with sc4:
+                    is_win = '冬肖' in triggered_seasons
+                    win_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in zodiac_seasons['冬肖']]
+                    st.markdown(f"❄️ **冬肖 (猪鼠牛) {'🚨 ⚡' if is_win else ''}**")
+                    st.caption(f"当前遗漏: **{season_omission['冬肖']}期** ｜ 上次: {season_last_omission['冬肖']}期")
+                    st.code(", ".join([f"{x:02d}" for x in win_nums]), language="text")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
