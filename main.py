@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含四季生肖拐点选号版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季生肖 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ ⚡空间形态 ｜ 🌸四季拐点")
+st.title("📊 开奖记录全维度综合统计看板 (含五行属性拐点选号版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🪙五行拐点选号")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -56,7 +56,7 @@ if uploaded_file is not None:
             def get_zodiac_of_number(n):
                 return base_zodiacs[(n - 1) % 12]
 
-            # 生肖空间形态与四季体系定义
+            # 生肖空间形态、四季与五行属性定义
             zodiac_zones_2 = {
                 '上区': ['马', '蛇', '龙', '兔', '虎', '牛'],
                 '下区': ['鼠', '猪', '狗', '鸡', '猴', '羊']
@@ -74,6 +74,14 @@ if uploaded_file is not None:
             }
             all_zones = {**zodiac_zones_2, **zodiac_zones_3}
 
+            five_elements = {
+                '金行': [4, 5, 12, 13, 26, 27, 34, 35, 42, 43],
+                '木行': [8, 9, 16, 17, 24, 25, 38, 39, 46, 47],
+                '水行': [1, 14, 15, 22, 23, 30, 31, 44, 45],
+                '火行': [2, 3, 10, 11, 18, 19, 32, 33, 40, 41, 48, 49],
+                '土行': [6, 7, 20, 21, 28, 29, 36, 37]
+            }
+
             # 基础出现总数统计
             num_counts = defaultdict(int)
             tail_counts = defaultdict(int)
@@ -81,6 +89,7 @@ if uploaded_file is not None:
             head_counts_dict = defaultdict(int)
             zone_counts = defaultdict(int)
             season_counts = defaultdict(int)
+            element_counts = defaultdict(int)
             
             for num, zodiac in parsed_data:
                 num_counts[num] += 1
@@ -93,6 +102,9 @@ if uploaded_file is not None:
                 for s_name, s_list in zodiac_seasons.items():
                     if zodiac in s_list:
                         season_counts[s_name] += 1
+                for e_name, e_nums in five_elements.items():
+                    if num in e_nums:
+                        element_counts[e_name] += 1
 
             # 🛠️ 建立全量位置索引
             num_indices = defaultdict(list)
@@ -101,6 +113,7 @@ if uploaded_file is not None:
             head_indices = defaultdict(list)
             zone_indices = defaultdict(list)
             season_indices = defaultdict(list)
+            element_indices = defaultdict(list)
             
             for i, (num, zodiac) in enumerate(parsed_data):
                 num_indices[num].append(i)
@@ -113,6 +126,9 @@ if uploaded_file is not None:
                 for s_name, s_list in zodiac_seasons.items():
                     if zodiac in s_list:
                         season_indices[s_name].append(i)
+                for e_name, e_nums in five_elements.items():
+                    if num in e_nums:
+                        element_indices[e_name].append(i)
 
             # 1. 号码双重遗漏
             num_omission = {}
@@ -174,12 +190,11 @@ if uploaded_file is not None:
                 else:
                     zone_omission[z_name] = total_records
                     zone_last_omission[z_name] = 0
-                
                 cnt = zone_counts[z_name]
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 zone_rates[z_name] = zone_omission[z_name] / avg_int
 
-            # 6. 四季生肖双重遗漏与欲出几率 (✨新增)
+            # 6. 四季生肖双重遗漏与欲出几率
             season_omission = {}
             season_last_omission = {}
             season_rates = {}
@@ -191,10 +206,25 @@ if uploaded_file is not None:
                 else:
                     season_omission[s_name] = total_records
                     season_last_omission[s_name] = 0
-                
                 cnt = season_counts[s_name]
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 season_rates[s_name] = season_omission[s_name] / avg_int
+
+            # 7. 五行属性双重遗漏与欲出几率 (✨新增)
+            element_omission = {}
+            element_last_omission = {}
+            element_rates = {}
+            for e_name in five_elements:
+                idxs = element_indices[e_name]
+                if idxs:
+                    element_omission[e_name] = (total_records - 1) - idxs[-1]
+                    element_last_omission[e_name] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
+                else:
+                    element_omission[e_name] = total_records
+                    element_last_omission[e_name] = 0
+                cnt = element_counts[e_name]
+                avg_int = (total_records / cnt) if cnt > 0 else total_records
+                element_rates[e_name] = element_omission[e_name] / avg_int
 
             # 计算全局欲出几率
             tail_rates = {t: tail_omission[t] / ((total_records / tail_counts[t]) if tail_counts[t] > 0 else total_records) for t in all_tails}
@@ -213,15 +243,16 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 七大核心板块
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            # 八大核心板块
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
                 "🎯 4. 剔除与拐点特赦智能选号",
                 "❌ 5. 综合分析反向杀号 (15码)",
                 "⚡ 6. 空间形态拐点选号",
-                "🌸 7. 四季生肖拐点选号"
+                "🌸 7. 四季生肖拐点选号",
+                "🪙 8. 五行属性拐点选号"
             ])
 
             # ==========================================
@@ -262,7 +293,7 @@ if uploaded_file is not None:
                     st.markdown(md)
 
             # ==========================================
-            # ⏳ TAB 2: 当前未出遗漏与欲出榜 (含四季生肖)
+            # ⏳ TAB 2: 当前未出遗漏与欲出榜
             # ==========================================
             with tab2:
                 st.subheader("⏳ 各指标未出当前遗漏与最近一次开出历史间隔深度统计")
@@ -367,85 +398,58 @@ if uploaded_file is not None:
                         md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
-                # 第二层：生肖空间分区与四季生肖形态深度统计 (3 栏展示)
+                # 第二层：形态分区、四季生肖与五行属性深度统计
                 st.write("---")
-                st.subheader("🔮 生肖形态分区（上下区 / 左中右区 / 春夏秋冬四季肖）遗漏与欲出深度统计")
-                zone_col1, zone_col2, zone_col3 = st.columns(3)
+                st.subheader("🔮 空间形态 / 四季生肖 / 五行属性 遗漏与欲出深度统计")
+                zone_col1, zone_col2, zone_col3, zone_col4 = st.columns(4)
                 
                 with zone_col1:
-                    st.markdown("### 🌗 生肖二分空间 (上下区)")
-                    z2_list = []
-                    for z_name, z_members in zodiac_zones_2.items():
-                        miss = zone_omission[z_name]
-                        l_miss = zone_last_omission[z_name]
-                        rate = zone_rates[z_name]
-                        cnt = zone_counts[z_name]
-                        avg_int = (total_records / cnt) if cnt > 0 else total_records
-                        z2_list.append((z_name, "、".join(z_members), cnt, miss, l_miss, avg_int, rate))
+                    st.markdown("### 🌗 二分空间 (上下区)")
+                    z2_list = [(zn, "、".join(zm), zone_counts[zn], zone_omission[zn], zone_last_omission[zn], (total_records/zone_counts[zn] if zone_counts[zn]>0 else total_records), zone_rates[zn]) for zn, zm in zodiac_zones_2.items()]
                     z2_list.sort(key=lambda x: -x[6])
-                    
-                    z2_md = "| 排名 | 分区名称 | 包含生肖 | 历史开出 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
-                    for r, (zn, zm, cnt, miss, l_miss, avg_int, rate) in enumerate(z2_list, 1):
-                        is_inflection = (miss >= l_miss)
-                        is_high_rate = (rate >= 0.4)
-                        tags = ""
-                        if is_inflection: tags += " 🚨"
-                        if is_high_rate: tags += " 🔥"
-                        zn_str = f"**{zn}**{tags}" if (is_inflection or is_high_rate) else zn
-                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        z2_md += f"| {r} | {zn_str} | `{zm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
+                    z2_md = "| 分区 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
+                    for zn, zm, cnt, miss, l_miss, avg_int, rate in z2_list:
+                        is_inf = (miss >= l_miss)
+                        is_hr = (rate >= 0.4)
+                        tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
+                        z2_md += f"| **{zn}**{tags} | **{miss}**⚡ | {l_miss} | **{rate:.2f}** |\n" if is_inf else f"| {zn}{tags} | {miss} | {l_miss} | {rate:.2f} |\n"
                     st.markdown(z2_md)
                     
                 with zone_col2:
-                    st.markdown("### 🧭 生肖三分空间 (左中右区)")
-                    z3_list = []
-                    for z_name, z_members in zodiac_zones_3.items():
-                        miss = zone_omission[z_name]
-                        l_miss = zone_last_omission[z_name]
-                        rate = zone_rates[z_name]
-                        cnt = zone_counts[z_name]
-                        avg_int = (total_records / cnt) if cnt > 0 else total_records
-                        z3_list.append((z_name, "、".join(z_members), cnt, miss, l_miss, avg_int, rate))
+                    st.markdown("### 🧭 三分空间 (左中右区)")
+                    z3_list = [(zn, "、".join(zm), zone_counts[zn], zone_omission[zn], zone_last_omission[zn], (total_records/zone_counts[zn] if zone_counts[zn]>0 else total_records), zone_rates[zn]) for zn, zm in zodiac_zones_3.items()]
                     z3_list.sort(key=lambda x: -x[6])
-                    
-                    z3_md = "| 排名 | 分区名称 | 包含生肖 | 历史开出 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
-                    for r, (zn, zm, cnt, miss, l_miss, avg_int, rate) in enumerate(z3_list, 1):
-                        is_inflection = (miss >= l_miss)
-                        is_high_rate = (rate >= 0.4)
-                        tags = ""
-                        if is_inflection: tags += " 🚨"
-                        if is_high_rate: tags += " 🔥"
-                        zn_str = f"**{zn}**{tags}" if (is_inflection or is_high_rate) else zn
-                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        z3_md += f"| {r} | {zn_str} | `{zm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
+                    z3_md = "| 分区 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
+                    for zn, zm, cnt, miss, l_miss, avg_int, rate in z3_list:
+                        is_inf = (miss >= l_miss)
+                        is_hr = (rate >= 0.4)
+                        tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
+                        z3_md += f"| **{zn}**{tags} | **{miss}**⚡ | {l_miss} | **{rate:.2f}** |\n" if is_inf else f"| {zn}{tags} | {miss} | {l_miss} | {rate:.2f} |\n"
                     st.markdown(z3_md)
 
                 with zone_col3:
-                    st.markdown("### 🌸 四季生肖空间 (春夏秋冬)")
-                    season_list = []
-                    for s_name, s_members in zodiac_seasons.items():
-                        miss = season_omission[s_name]
-                        l_miss = season_last_omission[s_name]
-                        rate = season_rates[s_name]
-                        cnt = season_counts[s_name]
-                        avg_int = (total_records / cnt) if cnt > 0 else total_records
-                        season_list.append((s_name, "、".join(s_members), cnt, miss, l_miss, avg_int, rate))
+                    st.markdown("### 🌸 四季生肖 (春夏秋冬)")
+                    season_list = [(sn, "、".join(sm), season_counts[sn], season_omission[sn], season_last_omission[sn], (total_records/season_counts[sn] if season_counts[sn]>0 else total_records), season_rates[sn]) for sn, sm in zodiac_seasons.items()]
                     season_list.sort(key=lambda x: -x[6])
-                    
-                    season_md = "| 排名 | 季节肖 | 包含生肖 | 历史开出 | 当前遗漏 | 上次遗漏 | 平均间隔 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
-                    for r, (sn, sm, cnt, miss, l_miss, avg_int, rate) in enumerate(season_list, 1):
-                        is_inflection = (miss >= l_miss)
-                        is_high_rate = (rate >= 0.4)
-                        tags = ""
-                        if is_inflection: tags += " 🚨"
-                        if is_high_rate: tags += " 🔥"
-                        sn_str = f"**{sn}**{tags}" if (is_inflection or is_high_rate) else sn
-                        miss_str = f"**{miss}期** ⚡" if is_inflection else f"{miss}期"
-                        rate_str = f"**{rate:.2f}** 🔥" if is_high_rate else f"{rate:.2f}"
-                        season_md += f"| {r} | {sn_str} | `{sm}` | {cnt}次 | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
+                    season_md = "| 季节肖 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
+                    for sn, sm, cnt, miss, l_miss, avg_int, rate in season_list:
+                        is_inf = (miss >= l_miss)
+                        is_hr = (rate >= 0.4)
+                        tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
+                        season_md += f"| **{sn}**{tags} | **{miss}**⚡ | {l_miss} | **{rate:.2f}** |\n" if is_inf else f"| {sn}{tags} | {miss} | {l_miss} | {rate:.2f} |\n"
                     st.markdown(season_md)
+
+                with zone_col4:
+                    st.markdown("### 🪙 五行属性 (金木水火土)")
+                    element_list = [(en, element_counts[en], element_omission[en], element_last_omission[en], (total_records/element_counts[en] if element_counts[en]>0 else total_records), element_rates[en]) for en in five_elements]
+                    element_list.sort(key=lambda x: -x[5])
+                    element_md = "| 五行 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
+                    for en, cnt, miss, l_miss, avg_int, rate in element_list:
+                        is_inf = (miss >= l_miss)
+                        is_hr = (rate >= 0.4)
+                        tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
+                        element_md += f"| **{en}**{tags} | **{miss}**⚡ | {l_miss} | **{rate:.2f}** |\n" if is_inf else f"| {en}{tags} | {miss} | {l_miss} | {rate:.2f} |\n"
+                    st.markdown(element_md)
 
             # ==========================================
             # 🔄 TAB 3: 前后行状态转移矩阵
@@ -598,25 +602,20 @@ if uploaded_file is not None:
                 * 提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的分区所覆盖的全部生肖，并自动反查打捞对应的 1-49 特码。
                 """)
                 
-                # 1. 抓取带闪电的二分空间 (上下区)
                 triggered_z2_zones = [zn for zn in zodiac_zones_2 if zone_omission[zn] >= zone_last_omission[zn]]
                 z2_zodiacs_set = set()
                 for zn in triggered_z2_zones:
                     z2_zodiacs_set.update(zodiac_zones_2[zn])
-                
                 z2_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in z2_zodiacs_set]
                 z2_nums.sort()
                 
-                # 2. 抓取带闪电的三分空间 (左中右区)
                 triggered_z3_zones = [zn for zn in zodiac_zones_3 if zone_omission[zn] >= zone_last_omission[zn]]
                 z3_zodiacs_set = set()
                 for zn in triggered_z3_zones:
                     z3_zodiacs_set.update(zodiac_zones_3[zn])
-                
                 z3_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in z3_zodiacs_set]
                 z3_nums.sort()
                 
-                # 3. 计算双区重叠核心交集 (AND) 与 综合并集 (OR)
                 strict_zodiacs_set = z2_zodiacs_set.intersection(z3_zodiacs_set)
                 strict_nums = [n for n in range(1, 50) if get_zodiac_of_number(n) in strict_zodiacs_set]
                 strict_nums.sort()
@@ -664,7 +663,7 @@ if uploaded_file is not None:
                         st.info("暂无空间形态号码")
 
             # ==========================================
-            # 🌸 TAB 7: ✨ 四季生肖拐点选号 (🔥功能七全新上线)
+            # 🌸 TAB 7: ✨ 四季生肖拐点选号
             # ==========================================
             with tab7:
                 st.subheader("🌸 四季生肖（春夏秋冬）触底拐点智能选号引擎")
@@ -674,7 +673,6 @@ if uploaded_file is not None:
                 * 提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的季节肖，并自动反查打捞该季节所对应的全部特码。
                 """)
                 
-                # 抓取带闪电的季节肖
                 triggered_seasons = [sn for sn in zodiac_seasons if season_omission[sn] >= season_last_omission[sn]]
                 season_zodiacs_set = set()
                 for sn in triggered_seasons:
@@ -694,7 +692,6 @@ if uploaded_file is not None:
                     st.info("提示：本期四季生肖中暂无分区触发遗漏拐点。")
                 st.write("---")
                 
-                # 四季生肖分栏独立展示
                 st.markdown("### 🔍 四季生肖各自状态与对应特码库")
                 sc1, sc2, sc3, sc4 = st.columns(4)
                 
@@ -725,6 +722,70 @@ if uploaded_file is not None:
                     st.markdown(f"❄️ **冬肖 (猪鼠牛) {'🚨 ⚡' if is_win else ''}**")
                     st.caption(f"当前遗漏: **{season_omission['冬肖']}期** ｜ 上次: {season_last_omission['冬肖']}期")
                     st.code(", ".join([f"{x:02d}" for x in win_nums]), language="text")
+
+            # ==========================================
+            # 🪙 TAB 8: ✨ 五行属性拐点选号 (🔥功能八全新上线)
+            # ==========================================
+            with tab8:
+                st.subheader("🪙 五行属性（金木水火土）触底拐点智能选号引擎")
+                st.markdown("""
+                💡 **五行属性拐点选号逻辑**：
+                * 自动扫描功能二中 **金行**、**木行**、**水行**、**火行**、**土行** 的双重遗漏与触底状态；
+                * 自动提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的五行属性，并自动打包输出对应属性的全部特码。
+                """)
+                
+                # 抓取带闪电的五行属性
+                triggered_elements = [en for en in five_elements if element_omission[en] >= element_last_omission[en]]
+                
+                element_selected_nums = []
+                for en in triggered_elements:
+                    element_selected_nums.extend(five_elements[en])
+                element_selected_nums = sorted(list(set(element_selected_nums)))
+                
+                st.write("---")
+                st.success(f"🏆 **【五行闪电拐点精选全包池】本期共命中 {len(triggered_elements)} 个五行属性，精选特码共 {len(element_selected_nums)} 个：**")
+                st.caption(f"🚨 **本期触发闪电的五行**：`{', '.join(triggered_elements) if triggered_elements else '暂无'}` ｜ 占比覆盖率：`{len(element_selected_nums)/49*100:.1f}%`")
+                st.markdown("👇 **请点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
+                
+                if element_selected_nums:
+                    st.code(", ".join([f"{x:02d}" for x in element_selected_nums]), language="text")
+                else:
+                    st.info("提示：本期五行属性中暂无行位触发遗漏拐点。")
+                st.write("---")
+                
+                # 五行属性分栏独立展示
+                st.markdown("### 🔍 五行属性各自状态与对应特码库")
+                ec1, ec2, ec3, ec4, ec5 = st.columns(5)
+                
+                with ec1:
+                    is_jin = '金行' in triggered_elements
+                    st.markdown(f"🪙 **金行 {'🚨 ⚡' if is_jin else ''}**")
+                    st.caption(f"当前: **{element_omission['金行']}期** ｜ 上次: {element_last_omission['金行']}期")
+                    st.code(", ".join([f"{x:02d}" for x in five_elements['金行']]), language="text")
+                    
+                with ec2:
+                    is_mu = '木行' in triggered_elements
+                    st.markdown(f"🌲 **木行 {'🚨 ⚡' if is_mu else ''}**")
+                    st.caption(f"当前: **{element_omission['木行']}期** ｜ 上次: {element_last_omission['木行']}期")
+                    st.code(", ".join([f"{x:02d}" for x in five_elements['木行']]), language="text")
+                    
+                with ec3:
+                    is_shui = '水行' in triggered_elements
+                    st.markdown(f"💧 **水行 {'🚨 ⚡' if is_shui else ''}**")
+                    st.caption(f"当前: **{element_omission['水行']}期** ｜ 上次: {element_last_omission['水行']}期")
+                    st.code(", ".join([f"{x:02d}" for x in five_elements['水行']]), language="text")
+                    
+                with ec4:
+                    is_huo = '火行' in triggered_elements
+                    st.markdown(f"🔥 **火行 {'🚨 ⚡' if is_huo else ''}**")
+                    st.caption(f"当前: **{element_omission['火行']}期** ｜ 上次: {element_last_omission['火行']}期")
+                    st.code(", ".join([f"{x:02d}" for x in five_elements['火行']]), language="text")
+                    
+                with ec5:
+                    is_tu = '土行' in triggered_elements
+                    st.markdown(f"⛰️ **土行 {'🚨 ⚡' if is_tu else ''}**")
+                    st.caption(f"当前: **{element_omission['土行']}期** ｜ 上次: {element_last_omission['土行']}期")
+                    st.code(", ".join([f"{x:02d}" for x in five_elements['土行']]), language="text")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
