@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含五行属性拐点选号版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🪙五行拐点选号")
+st.title("📊 开奖记录全维度综合统计看板 (含七段数拐点选号版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行七段 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🔢七段数拐点")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -56,7 +56,7 @@ if uploaded_file is not None:
             def get_zodiac_of_number(n):
                 return base_zodiacs[(n - 1) % 12]
 
-            # 生肖空间形态、四季与五行属性定义
+            # 生肖空间形态、四季、五行与七段数体系定义
             zodiac_zones_2 = {
                 '上区': ['马', '蛇', '龙', '兔', '虎', '牛'],
                 '下区': ['鼠', '猪', '狗', '鸡', '猴', '羊']
@@ -82,6 +82,16 @@ if uploaded_file is not None:
                 '土行': [6, 7, 20, 21, 28, 29, 36, 37]
             }
 
+            seven_segments = {
+                '1段': list(range(1, 8)),
+                '2段': list(range(8, 15)),
+                '3段': list(range(15, 22)),
+                '4段': list(range(22, 29)),
+                '5段': list(range(29, 36)),
+                '6段': list(range(36, 43)),
+                '7段': list(range(43, 50))
+            }
+
             # 基础出现总数统计
             num_counts = defaultdict(int)
             tail_counts = defaultdict(int)
@@ -90,6 +100,7 @@ if uploaded_file is not None:
             zone_counts = defaultdict(int)
             season_counts = defaultdict(int)
             element_counts = defaultdict(int)
+            segment_counts = defaultdict(int)
             
             for num, zodiac in parsed_data:
                 num_counts[num] += 1
@@ -105,6 +116,9 @@ if uploaded_file is not None:
                 for e_name, e_nums in five_elements.items():
                     if num in e_nums:
                         element_counts[e_name] += 1
+                for seg_name, seg_nums in seven_segments.items():
+                    if num in seg_nums:
+                        segment_counts[seg_name] += 1
 
             # 🛠️ 建立全量位置索引
             num_indices = defaultdict(list)
@@ -114,6 +128,7 @@ if uploaded_file is not None:
             zone_indices = defaultdict(list)
             season_indices = defaultdict(list)
             element_indices = defaultdict(list)
+            segment_indices = defaultdict(list)
             
             for i, (num, zodiac) in enumerate(parsed_data):
                 num_indices[num].append(i)
@@ -129,6 +144,9 @@ if uploaded_file is not None:
                 for e_name, e_nums in five_elements.items():
                     if num in e_nums:
                         element_indices[e_name].append(i)
+                for seg_name, seg_nums in seven_segments.items():
+                    if num in seg_nums:
+                        segment_indices[seg_name].append(i)
 
             # 1. 号码双重遗漏
             num_omission = {}
@@ -210,7 +228,7 @@ if uploaded_file is not None:
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 season_rates[s_name] = season_omission[s_name] / avg_int
 
-            # 7. 五行属性双重遗漏与欲出几率 (✨新增)
+            # 7. 五行属性双重遗漏与欲出几率
             element_omission = {}
             element_last_omission = {}
             element_rates = {}
@@ -225,6 +243,22 @@ if uploaded_file is not None:
                 cnt = element_counts[e_name]
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 element_rates[e_name] = element_omission[e_name] / avg_int
+
+            # 8. 七段数双重遗漏与欲出几率 (✨新增)
+            segment_omission = {}
+            segment_last_omission = {}
+            segment_rates = {}
+            for seg_name in seven_segments:
+                idxs = segment_indices[seg_name]
+                if idxs:
+                    segment_omission[seg_name] = (total_records - 1) - idxs[-1]
+                    segment_last_omission[seg_name] = idxs[-1] - idxs[-2] - 1 if len(idxs) >= 2 else idxs[-1]
+                else:
+                    segment_omission[seg_name] = total_records
+                    segment_last_omission[seg_name] = 0
+                cnt = segment_counts[seg_name]
+                avg_int = (total_records / cnt) if cnt > 0 else total_records
+                segment_rates[seg_name] = segment_omission[seg_name] / avg_int
 
             # 计算全局欲出几率
             tail_rates = {t: tail_omission[t] / ((total_records / tail_counts[t]) if tail_counts[t] > 0 else total_records) for t in all_tails}
@@ -243,8 +277,8 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 八大核心板块
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+            # 九大核心板块
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
@@ -252,7 +286,8 @@ if uploaded_file is not None:
                 "❌ 5. 综合分析反向杀号 (15码)",
                 "⚡ 6. 空间形态拐点选号",
                 "🌸 7. 四季生肖拐点选号",
-                "🪙 8. 五行属性拐点选号"
+                "🪙 8. 五行属性拐点选号",
+                "🔢 9. 七段数拐点选号"
             ])
 
             # ==========================================
@@ -398,17 +433,17 @@ if uploaded_file is not None:
                         md += f"| {r} | {h_str} | {miss_str} | {l_miss}期 | {avg_int:.1f}期 | {rate_str} |\n"
                     st.markdown(md)
 
-                # 第二层：形态分区、四季生肖与五行属性深度统计
+                # 第二层：形态分区、四季生肖、五行属性与七段数深度统计
                 st.write("---")
-                st.subheader("🔮 空间形态 / 四季生肖 / 五行属性 遗漏与欲出深度统计")
-                zone_col1, zone_col2, zone_col3, zone_col4 = st.columns(4)
+                st.subheader("🔮 空间形态 / 四季生肖 / 五行属性 / 七段数 遗漏与欲出深度统计")
+                zone_col1, zone_col2, zone_col3, zone_col4, zone_col5 = st.columns(5)
                 
                 with zone_col1:
                     st.markdown("### 🌗 二分空间 (上下区)")
-                    z2_list = [(zn, "、".join(zm), zone_counts[zn], zone_omission[zn], zone_last_omission[zn], (total_records/zone_counts[zn] if zone_counts[zn]>0 else total_records), zone_rates[zn]) for zn, zm in zodiac_zones_2.items()]
-                    z2_list.sort(key=lambda x: -x[6])
+                    z2_list = [(zn, zone_counts[zn], zone_omission[zn], zone_last_omission[zn], (total_records/zone_counts[zn] if zone_counts[zn]>0 else total_records), zone_rates[zn]) for zn, zm in zodiac_zones_2.items()]
+                    z2_list.sort(key=lambda x: -x[5])
                     z2_md = "| 分区 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
-                    for zn, zm, cnt, miss, l_miss, avg_int, rate in z2_list:
+                    for zn, cnt, miss, l_miss, avg_int, rate in z2_list:
                         is_inf = (miss >= l_miss)
                         is_hr = (rate >= 0.4)
                         tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
@@ -417,10 +452,10 @@ if uploaded_file is not None:
                     
                 with zone_col2:
                     st.markdown("### 🧭 三分空间 (左中右区)")
-                    z3_list = [(zn, "、".join(zm), zone_counts[zn], zone_omission[zn], zone_last_omission[zn], (total_records/zone_counts[zn] if zone_counts[zn]>0 else total_records), zone_rates[zn]) for zn, zm in zodiac_zones_3.items()]
-                    z3_list.sort(key=lambda x: -x[6])
+                    z3_list = [(zn, zone_counts[zn], zone_omission[zn], zone_last_omission[zn], (total_records/zone_counts[zn] if zone_counts[zn]>0 else total_records), zone_rates[zn]) for zn, zm in zodiac_zones_3.items()]
+                    z3_list.sort(key=lambda x: -x[5])
                     z3_md = "| 分区 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
-                    for zn, zm, cnt, miss, l_miss, avg_int, rate in z3_list:
+                    for zn, cnt, miss, l_miss, avg_int, rate in z3_list:
                         is_inf = (miss >= l_miss)
                         is_hr = (rate >= 0.4)
                         tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
@@ -428,11 +463,11 @@ if uploaded_file is not None:
                     st.markdown(z3_md)
 
                 with zone_col3:
-                    st.markdown("### 🌸 四季生肖 (春夏秋冬)")
-                    season_list = [(sn, "、".join(sm), season_counts[sn], season_omission[sn], season_last_omission[sn], (total_records/season_counts[sn] if season_counts[sn]>0 else total_records), season_rates[sn]) for sn, sm in zodiac_seasons.items()]
-                    season_list.sort(key=lambda x: -x[6])
-                    season_md = "| 季节肖 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
-                    for sn, sm, cnt, miss, l_miss, avg_int, rate in season_list:
+                    st.markdown("### 🌸 四季生肖")
+                    season_list = [(sn, season_counts[sn], season_omission[sn], season_last_omission[sn], (total_records/season_counts[sn] if season_counts[sn]>0 else total_records), season_rates[sn]) for sn, sm in zodiac_seasons.items()]
+                    season_list.sort(key=lambda x: -x[5])
+                    season_md = "| 季肖 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
+                    for sn, cnt, miss, l_miss, avg_int, rate in season_list:
                         is_inf = (miss >= l_miss)
                         is_hr = (rate >= 0.4)
                         tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
@@ -440,7 +475,7 @@ if uploaded_file is not None:
                     st.markdown(season_md)
 
                 with zone_col4:
-                    st.markdown("### 🪙 五行属性 (金木水火土)")
+                    st.markdown("### 🪙 五行属性")
                     element_list = [(en, element_counts[en], element_omission[en], element_last_omission[en], (total_records/element_counts[en] if element_counts[en]>0 else total_records), element_rates[en]) for en in five_elements]
                     element_list.sort(key=lambda x: -x[5])
                     element_md = "| 五行 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
@@ -450,6 +485,18 @@ if uploaded_file is not None:
                         tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
                         element_md += f"| **{en}**{tags} | **{miss}**⚡ | {l_miss} | **{rate:.2f}** |\n" if is_inf else f"| {en}{tags} | {miss} | {l_miss} | {rate:.2f} |\n"
                     st.markdown(element_md)
+
+                with zone_col5:
+                    st.markdown("### 🔢 七段数")
+                    segment_list = [(sgn, segment_counts[sgn], segment_omission[sgn], segment_last_omission[sgn], (total_records/segment_counts[sgn] if segment_counts[sgn]>0 else total_records), segment_rates[sgn]) for sgn in seven_segments]
+                    segment_list.sort(key=lambda x: -x[5])
+                    segment_md = "| 段数 | 遗漏 | 上次 | 欲出 |\n| :---: | :---: | :---: | :---: |\n"
+                    for sgn, cnt, miss, l_miss, avg_int, rate in segment_list:
+                        is_inf = (miss >= l_miss)
+                        is_hr = (rate >= 0.4)
+                        tags = (" 🚨" if is_inf else "") + (" 🔥" if is_hr else "")
+                        segment_md += f"| **{sgn}**{tags} | **{miss}**⚡ | {l_miss} | **{rate:.2f}** |\n" if is_inf else f"| {sgn}{tags} | {miss} | {l_miss} | {rate:.2f} |\n"
+                    st.markdown(segment_md)
 
             # ==========================================
             # 🔄 TAB 3: 前后行状态转移矩阵
@@ -724,7 +771,7 @@ if uploaded_file is not None:
                     st.code(", ".join([f"{x:02d}" for x in win_nums]), language="text")
 
             # ==========================================
-            # 🪙 TAB 8: ✨ 五行属性拐点选号 (🔥功能八全新上线)
+            # 🪙 TAB 8: ✨ 五行属性拐点选号
             # ==========================================
             with tab8:
                 st.subheader("🪙 五行属性（金木水火土）触底拐点智能选号引擎")
@@ -734,9 +781,7 @@ if uploaded_file is not None:
                 * 自动提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的五行属性，并自动打包输出对应属性的全部特码。
                 """)
                 
-                # 抓取带闪电的五行属性
                 triggered_elements = [en for en in five_elements if element_omission[en] >= element_last_omission[en]]
-                
                 element_selected_nums = []
                 for en in triggered_elements:
                     element_selected_nums.extend(five_elements[en])
@@ -753,8 +798,6 @@ if uploaded_file is not None:
                     st.info("提示：本期五行属性中暂无行位触发遗漏拐点。")
                 st.write("---")
                 
-                # 五行属性分栏独立展示
-                st.markdown("### 🔍 五行属性各自状态与对应特码库")
                 ec1, ec2, ec3, ec4, ec5 = st.columns(5)
                 
                 with ec1:
@@ -786,6 +829,47 @@ if uploaded_file is not None:
                     st.markdown(f"⛰️ **土行 {'🚨 ⚡' if is_tu else ''}**")
                     st.caption(f"当前: **{element_omission['土行']}期** ｜ 上次: {element_last_omission['土行']}期")
                     st.code(", ".join([f"{x:02d}" for x in five_elements['土行']]), language="text")
+
+            # ==========================================
+            # 🔢 TAB 9: ✨ 七段数拐点选号 (🔥功能九全新上线)
+            # ==========================================
+            with tab9:
+                st.subheader("🔢 七段数（每段7码等分）触底拐点智能选号引擎")
+                st.markdown("""
+                💡 **七段数拐点选号逻辑**：
+                * 自动扫描功能二中 **1段(01-07)** 至 **7段(43-49)** 的双重遗漏与触底状态；
+                * 自动提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的段数，并自动打包输出对应段数的全部特码。
+                """)
+                
+                # 抓取带闪电的段数
+                triggered_segments = [sgn for sgn in seven_segments if segment_omission[sgn] >= segment_last_omission[sgn]]
+                
+                segment_selected_nums = []
+                for sgn in triggered_segments:
+                    segment_selected_nums.extend(seven_segments[sgn])
+                segment_selected_nums = sorted(list(set(segment_selected_nums)))
+                
+                st.write("---")
+                st.success(f"🏆 **【七段数闪电拐点精选全包池】本期共命中 {len(triggered_segments)} 个段数，精选特码共 {len(segment_selected_nums)} 个：**")
+                st.caption(f"🚨 **本期触发闪电的段数**：`{', '.join(triggered_segments) if triggered_segments else '暂无'}` ｜ 占比覆盖率：`{len(segment_selected_nums)/49*100:.1f}%`")
+                st.markdown("👇 **请点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
+                
+                if segment_selected_nums:
+                    st.code(", ".join([f"{x:02d}" for x in segment_selected_nums]), language="text")
+                else:
+                    st.info("提示：本期七段数中暂无段位触发遗漏拐点。")
+                st.write("---")
+                
+                # 7列分栏展示
+                st.markdown("### 🔍 七段数各自状态与对应特码库")
+                seg_cols = st.columns(7)
+                for idx, sgn in enumerate(seven_segments):
+                    with seg_cols[idx]:
+                        is_seg_inf = sgn in triggered_segments
+                        st.markdown(f"**{sgn} {'🚨 ⚡' if is_seg_inf else ''}**")
+                        st.caption(f"遗漏: **{segment_omission[sgn]}期**")
+                        st.caption(f"上次: {segment_last_omission[sgn]}期")
+                        st.code(", ".join([f"{x:02d}" for x in seven_segments[sgn]]), language="text")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
