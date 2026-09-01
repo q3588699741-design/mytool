@@ -5,8 +5,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide")
-st.title("📊 开奖记录全维度综合统计看板 (含七段数拐点选号版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行七段 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🔢七段数拐点")
+st.title("📊 开奖记录全维度综合统计看板 (含冷热分层与十维系统版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行七段 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🧊冷热遗漏分层")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -244,7 +244,7 @@ if uploaded_file is not None:
                 avg_int = (total_records / cnt) if cnt > 0 else total_records
                 element_rates[e_name] = element_omission[e_name] / avg_int
 
-            # 8. 七段数双重遗漏与欲出几率 (✨新增)
+            # 8. 七段数双重遗漏与欲出几率
             segment_omission = {}
             segment_last_omission = {}
             segment_rates = {}
@@ -277,8 +277,8 @@ if uploaded_file is not None:
 
             st.write("---")
             
-            # 九大核心板块
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+            # 十大核心板块
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
                 "🔥 1. 大盘总量冷热榜", 
                 "⏳ 2. 当前未出遗漏与欲出榜", 
                 "🔄 3. 前后行状态转移矩阵",
@@ -287,7 +287,8 @@ if uploaded_file is not None:
                 "⚡ 6. 空间形态拐点选号",
                 "🌸 7. 四季生肖拐点选号",
                 "🪙 8. 五行属性拐点选号",
-                "🔢 9. 七段数拐点选号"
+                "🔢 9. 七段数拐点选号",
+                "🧊 10. 冷热遗漏分层控码选号"
             ])
 
             # ==========================================
@@ -831,7 +832,7 @@ if uploaded_file is not None:
                     st.code(", ".join([f"{x:02d}" for x in five_elements['土行']]), language="text")
 
             # ==========================================
-            # 🔢 TAB 9: ✨ 七段数拐点选号 (🔥功能九全新上线)
+            # 🔢 TAB 9: ✨ 七段数拐点选号
             # ==========================================
             with tab9:
                 st.subheader("🔢 七段数（每段7码等分）触底拐点智能选号引擎")
@@ -841,7 +842,6 @@ if uploaded_file is not None:
                 * 自动提取触发 **【当前遗漏 $\ge$ 上次遗漏】（即带 ⚡ 闪电标记）** 的段数，并自动打包输出对应段数的全部特码。
                 """)
                 
-                # 抓取带闪电的段数
                 triggered_segments = [sgn for sgn in seven_segments if segment_omission[sgn] >= segment_last_omission[sgn]]
                 
                 segment_selected_nums = []
@@ -860,8 +860,6 @@ if uploaded_file is not None:
                     st.info("提示：本期七段数中暂无段位触发遗漏拐点。")
                 st.write("---")
                 
-                # 7列分栏展示
-                st.markdown("### 🔍 七段数各自状态与对应特码库")
                 seg_cols = st.columns(7)
                 for idx, sgn in enumerate(seven_segments):
                     with seg_cols[idx]:
@@ -870,6 +868,118 @@ if uploaded_file is not None:
                         st.caption(f"遗漏: **{segment_omission[sgn]}期**")
                         st.caption(f"上次: {segment_last_omission[sgn]}期")
                         st.code(", ".join([f"{x:02d}" for x in seven_segments[sgn]]), language="text")
+
+            # ==========================================
+            # 🧊 TAB 10: ✨ 冷热遗漏分层控码选号 (🔥新功能上线)
+            # ==========================================
+            with tab10:
+                st.subheader("🧊 五层冷热遗漏梯级选号与杀号引擎")
+                st.markdown("""
+                💡 **五层冷热梯度控码逻辑**：
+                * 🔴 **第 1 层：热码回补层 (遗漏 0 - 10 期)** ── 全额保留（防守高频连开）
+                * 🟠 **第 2 层：温热黄金层 (遗漏 11 - 25 期)** ── 全额保留（主力爆发地带）
+                * 🟡 **第 3 层：常态温冷层 (遗漏 26 - 50 期)** ── 优选具备触底拐点($\ge$上次)或高欲出率($\ge 0.40$)的号码
+                * 🔵 **第 4 层：深度冷码层 (遗漏 51 - 100 期)** ── 仅特赦具备触底拐点($\ge$上次)的号码
+                * ⚪ **第 5 层：极限大冷层 (遗漏 100+ 期)** ── 全额排除剔除（天然杀号区）
+                """)
+                
+                tier_1 = [] # 0-10
+                tier_2 = [] # 11-25
+                tier_3 = [] # 26-50
+                tier_4 = [] # 51-100
+                tier_5 = [] # 100+
+                
+                for n in range(1, 50):
+                    om = num_omission[n]
+                    last_om = num_last_omission[n]
+                    rate = num_rates[n]
+                    z = get_zodiac_of_number(n)
+                    is_inf = om >= last_om
+                    info = (n, z, om, last_om, rate, is_inf)
+                    
+                    if om <= 10:
+                        tier_1.append(info)
+                    elif 11 <= om <= 25:
+                        tier_2.append(info)
+                    elif 26 <= om <= 50:
+                        tier_3.append(info)
+                    elif 51 <= om <= 100:
+                        tier_4.append(info)
+                    else:
+                        tier_5.append(info)
+                
+                # 梯级精选决策
+                layer_selected = []
+                layer_removed = []
+                
+                # 1+2层：全包
+                for x in tier_1 + tier_2:
+                    layer_selected.append(x[0])
+                    
+                # 3层：拐点 或 欲出率>=0.40
+                for x in tier_3:
+                    if x[5] or (x[4] >= 0.40):
+                        layer_selected.append(x[0])
+                    else:
+                        layer_removed.append(x[0])
+                        
+                # 4层：必须具备触底拐点
+                for x in tier_4:
+                    if x[5]:
+                        layer_selected.append(x[0])
+                    else:
+                        layer_removed.append(x[0])
+                        
+                # 5层：全杀
+                for x in tier_5:
+                    layer_removed.append(x[0])
+                    
+                layer_selected.sort()
+                layer_removed.sort()
+                
+                st.write("---")
+                st.success(f"🏆 **【冷热遗漏分层精选全包池】本期符合分层策略号码共 {len(layer_selected)} 个（已按由小到大重排）：**")
+                st.caption(f"🎯 **分层覆盖率**：`{len(layer_selected)/49*100:.1f}%` ｜ 稳健控制在 40 码以下主力区间！")
+                st.markdown("👇 **请点击下方代码框右上角的小图标，即可秒级全选复制到剪贴板：**")
+                st.code(", ".join([f"{x:02d}" for x in layer_selected]), language="text")
+                
+                st.error(f"❄️ **【冷热分层剔除死码池】本期排除的大冷/弱势死码共 {len(layer_removed)} 个：**")
+                st.code(", ".join([f"{x:02d}" for x in layer_removed]), language="text")
+                st.write("---")
+                
+                # 5大层级分栏详细展示
+                st.markdown("### 🔍 5 大遗漏梯级大盘分布与号码明细")
+                t_col1, t_col2, t_col3, t_col4, t_col5 = st.columns(5)
+                
+                with t_col1:
+                    st.markdown(f"🔴 **第1层: 热码回补 ({len(tier_1)}码)**")
+                    st.caption("遗漏 0-10 期 ｜ 全包保留")
+                    t1_nums = [f"{x[0]:02d}" for x in tier_1]
+                    st.code(", ".join(t1_nums) if t1_nums else "无", language="text")
+                    
+                with t_col2:
+                    st.markdown(f"🟠 **第2层: 温热黄金 ({len(tier_2)}码)**")
+                    st.caption("遗漏 11-25 期 ｜ 全包保留")
+                    t2_nums = [f"{x[0]:02d}" for x in tier_2]
+                    st.code(", ".join(t2_nums) if t2_nums else "无", language="text")
+                    
+                with t_col3:
+                    st.markdown(f"🟡 **第3层: 常态温冷 ({len(tier_3)}码)**")
+                    st.caption("遗漏 26-50 期 ｜ 优选拐点/高欲出")
+                    t3_nums = [f"{x[0]:02d}" for x in tier_3]
+                    st.code(", ".join(t3_nums) if t3_nums else "无", language="text")
+                    
+                with t_col4:
+                    st.markdown(f"🔵 **第4层: 深度冷码 ({len(tier_4)}码)**")
+                    st.caption("遗漏 51-100 期 ｜ 仅特赦拐点⚡")
+                    t4_nums = [f"{x[0]:02d}" for x in tier_4]
+                    st.code(", ".join(t4_nums) if t4_nums else "无", language="text")
+                    
+                with t_col5:
+                    st.markdown(f"⚪ **第5层: 极限大冷 ({len(tier_5)}码)**")
+                    st.caption("遗漏 100+ 期 ｜ 全额排除剔除")
+                    t5_nums = [f"{x[0]:02d}" for x in tier_5]
+                    st.code(", ".join(t5_nums) if t5_nums else "无", language="text")
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
