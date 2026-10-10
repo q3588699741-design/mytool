@@ -6,8 +6,8 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide", initial_sidebar_state="expanded")
-st.title("📊 开奖记录全维度综合统计看板 (含全维动能多因子杀3肖版)")
-st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行七段 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🐯全维动能多因子杀3肖")
+st.title("📊 开奖记录全维度综合统计看板 (含冷热遗漏分层控码与杀肖版)")
+st.caption("最新总体冷热 ｜ 当前双重遗漏与欲出几率 ｜ 空间分区与四季五行七段 ｜ 纵向状态转移 ｜ 🎯选号与杀号 ｜ 🧊冷热遗漏分层控码")
 
 # 1. 配置文件上传组件
 uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持 .csv 或 .xlsx 格式)", type=["csv", "xlsx"])
@@ -273,12 +273,12 @@ if uploaded_file is not None:
             # =========================================================================
             start_backtest_idx = min(30, max(2, total_records // 5))
 
-            res_top40 = []
-            res_zod3 = []
-            res_asym12 = []
             res_layers = []
-            res_f4 = []
+            res_zod3 = []
+            res_top40 = []
+            res_asym12 = []
             res_or = []
+            res_f4 = []
             res_blind12 = []
             res_kill15 = []
             res_seasons = []
@@ -352,7 +352,33 @@ if uploaded_file is not None:
                 sub_prev_head = prev_num_in_sub // 10
                 sub_killed_head = (sub_prev_head - 2) % 5
 
-                # 1. 回测全维动能多因子打分法 Top 40
+                # 1. 回测冷热分层控码选号
+                sub_nums_lay = []
+                for n in range(1, 50):
+                    om = sub_num_om[n]
+                    is_inf = om >= sub_num_last[n]
+                    rate = sub_num_rates[n]
+                    if om <= 25: sub_nums_lay.append(n)
+                    elif 26 <= om <= 50 and (is_inf or rate >= 0.40): sub_nums_lay.append(n)
+                    elif 51 <= om <= 100 and is_inf: sub_nums_lay.append(n)
+                res_layers.append(n_num in sub_nums_lay)
+
+                # 2. 回测全维动能杀3肖 (旗舰模型)
+                sub_recent_zod = defaultdict(int)
+                for s_num, s_zod in hist_sub[-7:]:
+                    sub_recent_zod[s_zod] += 1
+                sub_zscores = []
+                for z in all_zodiacs:
+                    z_sc = sub_recent_zod[z] * 1.5
+                    if sub_zod_rates[z] < 0.4 and sub_zod_om[z] < sub_zod_last[z]: z_sc += 0.5
+                    if z not in sub_zods_or: z_sc += 0.5
+                    if sub_zod_om[z] == 0: z_sc += 1.0
+                    sub_zscores.append((z, z_sc))
+                sub_zscores.sort(key=lambda x: -x[1])
+                sub_killed_3_zods = set([x[0] for x in sub_zscores[:3]])
+                res_zod3.append(n_zod not in sub_killed_3_zods)
+
+                # 3. 回测全维动能多因子打分法 Top 40
                 sub_scored = []
                 for n in range(1, 50):
                     t = n % 10
@@ -372,40 +398,18 @@ if uploaded_file is not None:
                 sub_top40 = set([x[0] for x in sub_scored[:40]])
                 res_top40.append(n_num in sub_top40)
 
-                # 2. 回测全维动能杀3肖 (旗舰84.5%胜率模型)
-                sub_recent_zod = defaultdict(int)
-                for s_num, s_zod in hist_sub[-7:]:
-                    sub_recent_zod[s_zod] += 1
-                sub_zscores = []
-                for z in all_zodiacs:
-                    z_sc = sub_recent_zod[z] * 1.5
-                    if sub_zod_rates[z] < 0.4 and sub_zod_om[z] < sub_zod_last[z]: z_sc += 0.5
-                    if z not in sub_zods_or: z_sc += 0.5
-                    if sub_zod_om[z] == 0: z_sc += 1.0
-                    sub_zscores.append((z, z_sc))
-                sub_zscores.sort(key=lambda x: -x[1])
-                sub_killed_3_zods = set([x[0] for x in sub_zscores[:3]])
-                res_zod3.append(n_zod not in sub_killed_3_zods)
-
-                # 3. 回测三区间非对称杀12码 (留37码)
+                # 4. 回测三区间非对称杀12码 (留37码)
                 if prev_num_in_sub <= 16: asym12_off = 26
                 elif prev_num_in_sub <= 33: asym12_off = 2
                 else: asym12_off = 5
                 sub_asym_kill_12 = set([((prev_num_in_sub + asym12_off + j - 1) % 49) + 1 for j in range(12)])
                 res_asym12.append(n_num not in sub_asym_kill_12)
 
-                # 4. 回测冷热分层
-                sub_nums_lay = []
-                for n in range(1, 50):
-                    om = sub_num_om[n]
-                    is_inf = om >= sub_num_last[n]
-                    rate = sub_num_rates[n]
-                    if om <= 25: sub_nums_lay.append(n)
-                    elif 26 <= om <= 50 and (is_inf or rate >= 0.40): sub_nums_lay.append(n)
-                    elif 51 <= om <= 100 and is_inf: sub_nums_lay.append(n)
-                res_layers.append(n_num in sub_nums_lay)
+                # 5. 回测空间形态OR
+                sub_nums_or = [n for n in range(1, 50) if get_zodiac_of_number(n) in sub_zods_or]
+                res_or.append(n_num in sub_nums_or)
 
-                # 5. 回测功能四
+                # 6. 回测功能四：特赦恢复智能选号
                 sub_f4 = []
                 for n in range(1, 50):
                     t = n % 10
@@ -416,10 +420,6 @@ if uploaded_file is not None:
                     if (r1_rem or r2_rem) and not can_res: continue
                     sub_f4.append(n)
                 res_f4.append(n_num in sub_f4)
-
-                # 6. 回测空间形态OR
-                sub_nums_or = [n for n in range(1, 50) if get_zodiac_of_number(n) in sub_zods_or]
-                res_or.append(n_num in sub_nums_or)
 
                 # 7. 近前盲区杀12码
                 sub_blind_kill_12 = set([((prev_num_in_sub + j - 1) % 49) + 1 for j in range(2, 14)])
@@ -475,10 +475,10 @@ if uploaded_file is not None:
                     'r30_rate': r30, 'r30_hits': h30, 'r30_n': n30
                 }
 
+            stats_layers = calc_rate_stats(res_layers)
             stats_zod3 = calc_rate_stats(res_zod3)
             stats_top40 = calc_rate_stats(res_top40)
             stats_asym12 = calc_rate_stats(res_asym12)
-            stats_layers = calc_rate_stats(res_layers)
             stats_or = calc_rate_stats(res_or)
             stats_f4 = calc_rate_stats(res_f4)
             stats_blind12 = calc_rate_stats(res_blind12)
@@ -491,12 +491,12 @@ if uploaded_file is not None:
             # 🎛️ 全新升级：极简直达导航（菜单直接展示 总体 / 近7期 / 近30期 命中率）
             # =========================================================================
             func_options = [
-                f"🐯 1. 全维动能多因子杀3肖 (留9肖37码) 【总: {stats_zod3['total_rate']:.1f}% ｜ 近7: {stats_zod3['r7_rate']:.0f}% ｜ 近30: {stats_zod3['r30_rate']:.1f}%】",
-                f"👑 2. 全维动能多因子打分 (Top 40) 【总: {stats_top40['total_rate']:.1f}% ｜ 近7: {stats_top40['r7_rate']:.0f}% ｜ 近30: {stats_top40['r30_rate']:.1f}%】",
-                f"🚀 3. 三区间非对称杀12码 (留37码) 【总: {stats_asym12['total_rate']:.1f}% ｜ 近7: {stats_asym12['r7_rate']:.0f}% ｜ 近30: {stats_asym12['r30_rate']:.1f}%】",
-                f"🧊 4. 冷热遗漏分层控码选号 【总: {stats_layers['total_rate']:.1f}% ｜ 近7: {stats_layers['r7_rate']:.0f}% ｜ 近30: {stats_layers['r30_rate']:.1f}%】",
+                f"🧊 1. 冷热遗漏分层控码选号 【总: {stats_layers['total_rate']:.1f}% ｜ 近7: {stats_layers['r7_rate']:.0f}% ｜ 近30: {stats_layers['r30_rate']:.1f}%】",
+                f"🐯 2. 全维动能多因子杀3肖 (留9肖37码) 【总: {stats_zod3['total_rate']:.1f}% ｜ 近7: {stats_zod3['r7_rate']:.0f}% ｜ 近30: {stats_zod3['r30_rate']:.1f}%】",
+                f"👑 3. 全维动能多因子打分 (Top 40) 【总: {stats_top40['total_rate']:.1f}% ｜ 近7: {stats_top40['r7_rate']:.0f}% ｜ 近30: {stats_top40['r30_rate']:.1f}%】",
+                f"🚀 4. 三区间非对称杀12码 (留37码) 【总: {stats_asym12['total_rate']:.1f}% ｜ 近7: {stats_asym12['r7_rate']:.0f}% ｜ 近30: {stats_asym12['r30_rate']:.1f}%】",
                 f"⚡ 5. 空间形态拐点选号 (OR并集) 【总: {stats_or['total_rate']:.1f}% ｜ 近7: {stats_or['r7_rate']:.0f}% ｜ 近30: {stats_or['r30_rate']:.1f}%】",
-                f"🎯 6. 拐点特赦智能选号 (功能四) 【总: {stats_f4['total_rate']:.1f}% ｜ 近7: {stats_f4['r7_rate']:.0f}% ｜ 近30: {stats_f4['r30_rate']:.1f}%】",
+                f"🎯 6. 欲出率特赦恢复智能选号 【总: {stats_f4['total_rate']:.1f}% ｜ 近7: {stats_f4['r7_rate']:.0f}% ｜ 近30: {stats_f4['r30_rate']:.1f}%】",
                 f"🛡️ 7. 近前盲区连续杀12码 【总安全: {stats_blind12['total_rate']:.1f}% ｜ 近7: {stats_blind12['r7_rate']:.0f}% ｜ 近30: {stats_blind12['r30_rate']:.1f}%】",
                 f"❌ 8. 综合反向杀15码 【总安全: {stats_kill15['total_rate']:.1f}% ｜ 近7: {stats_kill15['r7_rate']:.0f}% ｜ 近30: {stats_kill15['r30_rate']:.1f}%】",
                 f"🌸 9. 四季生肖拐点选号 【总: {stats_seasons['total_rate']:.1f}% ｜ 近7: {stats_seasons['r7_rate']:.0f}% ｜ 近30: {stats_seasons['r30_rate']:.1f}%】",
@@ -520,16 +520,16 @@ if uploaded_file is not None:
                 st.session_state['active_func_idx'] = 0
 
             with btn_c1:
-                if st.button(f"🐯 杀3肖旗舰 ({stats_zod3['total_rate']:.1f}%)", use_container_width=True):
+                if st.button(f"🧊 遗漏分层控码 ({stats_layers['total_rate']:.1f}%)", use_container_width=True):
                     st.session_state['active_func_idx'] = 0
             with btn_c2:
-                if st.button(f"👑 全维动能Top40 ({stats_top40['total_rate']:.1f}%)", use_container_width=True):
+                if st.button(f"🐯 杀3肖旗舰 ({stats_zod3['total_rate']:.1f}%)", use_container_width=True):
                     st.session_state['active_func_idx'] = 1
             with btn_c3:
-                if st.button(f"🚀 非对称杀12码 ({stats_asym12['total_rate']:.1f}%)", use_container_width=True):
+                if st.button(f"👑 全维动能Top40 ({stats_top40['total_rate']:.1f}%)", use_container_width=True):
                     st.session_state['active_func_idx'] = 2
             with btn_c4:
-                if st.button(f"🧊 遗漏分层控码 ({stats_layers['total_rate']:.1f}%)", use_container_width=True):
+                if st.button(f"🚀 非对称杀12码 ({stats_asym12['total_rate']:.1f}%)", use_container_width=True):
                     st.session_state['active_func_idx'] = 3
 
             if sidebar_choice != func_options[st.session_state['active_func_idx']]:
@@ -556,9 +556,52 @@ if uploaded_file is not None:
             st.write("---")
 
             # ==========================================
-            # 功能 1: 🐯 全维动能多因子杀3肖 (留9肖37码)
+            # 功能 1: 🧊 冷热遗漏分层控码选号 (首位功能)
             # ==========================================
-            if selected_func.startswith("🐯 1."):
+            if selected_func.startswith("🧊 1."):
+                st.subheader("🧊 五层冷热遗漏梯级选号与杀号引擎")
+                
+                tier_1, tier_2, tier_3, tier_4, tier_5 = [], [], [], [], []
+                for n in range(1, 50):
+                    om, l_om, rate = num_omission[n], num_last_omission[n], num_rates[n]
+                    info = (n, get_zodiac_of_number(n), om, l_om, rate, om >= l_om)
+                    if om <= 10: tier_1.append(info)
+                    elif om <= 25: tier_2.append(info)
+                    elif om <= 50: tier_3.append(info)
+                    elif om <= 100: tier_4.append(info)
+                    else: tier_5.append(info)
+                l_sel, l_rem = [], []
+                for x in tier_1 + tier_2: l_sel.append(x[0])
+                for x in tier_3: (l_sel if (x[5] or x[4] >= 0.40) else l_rem).append(x[0])
+                for x in tier_4: (l_sel if x[5] else l_rem).append(x[0])
+                for x in tier_5: l_rem.append(x[0])
+                l_sel.sort(); l_rem.sort()
+
+                kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+                kpi1.metric("📊 动态历史总胜率", f"{stats_layers['total_rate']:.2f}%", f"{stats_layers['total_hits']}/{stats_layers['total_n']}期", delta_color="off")
+                kpi2.metric("⚡ 最近 7 期胜率", f"{stats_layers['r7_rate']:.1f}%", f"{stats_layers['r7_hits']}/{stats_layers['r7_n']}期", delta_color="off")
+                kpi3.metric("📅 最近 30 期胜率", f"{stats_layers['r30_rate']:.1f}%", f"{stats_layers['r30_hits']}/{stats_layers['r30_n']}期", delta_color="off")
+                kpi4.metric("🎯 分层精选码数", f"{len(l_sel)} 码")
+
+                st.markdown("""
+                💡 **冷热遗漏分层控码核心逻辑**：
+                * **Tier 1 & 2 (0-25期温热区)**：高频主力出号带，全部直接纳入基础大底；
+                * **Tier 3 (26-50期温冷区)**：须触发**拐点反弹 (`om >= l_om`)** 或 **欲出率 $\ge 0.40$** 方可打捞入选；
+                * **Tier 4 (51-100期深冷区)**：只在强力突破前次沉睡极限 (`om >= l_om`) 时予以特赦；
+                * **Tier 5 (>100期极冷区)**：长期钝化死码，坚决剔除杀号！
+                """)
+
+                st.success(f"🏆 **【分层控码精选大底池】({len(l_sel)} 码 ｜ 历史总胜率 {stats_layers['total_rate']:.1f}%，已按由小到大排序)：**")
+                st.markdown("👇 **点击右上角小图标即可一键复制：**")
+                st.code(", ".join([f"{x:02d}" for x in l_sel]), language="text")
+                st.write("---")
+                st.error(f"🚫 **【分层淘汰冷杂死码池】({len(l_rem)} 码)：**")
+                st.code(", ".join([f"{x:02d}" for x in l_rem]), language="text")
+
+            # ==========================================
+            # 功能 2: 🐯 全维动能多因子杀3肖 (留9肖37码)
+            # ==========================================
+            elif selected_func.startswith("🐯 2."):
                 st.subheader("🐯 全维动能多因子杀 3 肖（精准锁定保留 9 肖 37 码 ｜ 胜率 84.5%）")
                 
                 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -575,7 +618,6 @@ if uploaded_file is not None:
                 * 自动打捞剩余的 **9 个优势生肖** 所对应的 **37 个特码** 作为本期精准大底！
                 """)
                 
-                # 计算本期 12 生肖多因子杀肖
                 curr_trig_z2 = [zn for zn in zodiac_zones_2 if zone_omission[zn] >= zone_last_omission[zn]]
                 curr_trig_z3 = [zn for zn in zodiac_zones_3 if zone_omission[zn] >= zone_last_omission[zn]]
                 curr_zods_or = set([z for zn in curr_trig_z2 for z in zodiac_zones_2[zn]]).union([z for zn in curr_trig_z3 for z in zodiac_zones_3[zn]])
@@ -613,7 +655,7 @@ if uploaded_file is not None:
                 c_z1, c_z2 = st.columns(2)
                 with c_z1:
                     st.markdown("#### 🚫 被杀 3 肖详细得分与淘汰主因")
-                    tbl_z3 = "| 排位 | 生肖 | 综合风险分 | 淘汰核心主因 |\n| :---: | :---: | :---: | :--- |\n"
+                    tbl_z3 = "| 排位 | 生肖 | 综合风险分 | 淘汰核心主因 |\n| :---: | :---: | :--- |\n"
                     for rk, (bz, bsc) in enumerate(zod_scored_12[:3], 1):
                         tbl_z3 += f"| {rk} | **{bz}** | **{bsc:.2f}** | {'近7期过热' if recent_zod_counts[bz]>0 else '欲出率低+未触底'} |\n"
                     st.markdown(tbl_z3)
@@ -626,9 +668,9 @@ if uploaded_file is not None:
                     """)
 
             # ==========================================
-            # 功能 2: 👑 全维动能多因子打分 (Top 40)
+            # 功能 3: 👑 全维动能多因子打分 (Top 40)
             # ==========================================
-            elif selected_func.startswith("👑 2."):
+            elif selected_func.startswith("👑 3."):
                 st.subheader("👑 全维动能多因子打分法（固定锁定 40 码大底 ｜ 胜率突破 85.1%）")
                 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
                 kpi1.metric("📊 动态历史总胜率", f"{stats_top40['total_rate']:.2f}%", f"{stats_top40['total_hits']}/{stats_top40['total_n']}期", delta_color="off")
@@ -663,9 +705,9 @@ if uploaded_file is not None:
                 st.code(", ".join([f"{x:02d}" for x in top40_res]), language="text")
 
             # ==========================================
-            # 功能 3: 🚀 三区间非对称杀12码 (留37码)
+            # 功能 4: 🚀 三区间非对称杀12码 (留37码)
             # ==========================================
-            elif selected_func.startswith("🚀 3."):
+            elif selected_func.startswith("🚀 4."):
                 st.subheader("🚀 三区间非对称盲区杀 12 码（精选 37 码）")
                 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
                 kpi1.metric("📊 动态历史总胜率", f"{stats_asym12['total_rate']:.2f}%", f"{stats_asym12['total_hits']}/{stats_asym12['total_n']}期", delta_color="off")
@@ -681,36 +723,6 @@ if uploaded_file is not None:
                 st.code(", ".join([f"{x:02d}" for x in k12_list]), language="text")
                 st.success(f"🏆 **精选 37 码池：**")
                 st.code(", ".join([f"{x:02d}" for x in sel37_list]), language="text")
-
-            # ==========================================
-            # 功能 4: 🧊 冷热遗漏分层控码选号
-            # ==========================================
-            elif selected_func.startswith("🧊 4."):
-                st.subheader("🧊 五层冷热遗漏梯级选号与杀号引擎")
-                tier_1, tier_2, tier_3, tier_4, tier_5 = [], [], [], [], []
-                for n in range(1, 50):
-                    om, l_om, rate = num_omission[n], num_last_omission[n], num_rates[n]
-                    info = (n, get_zodiac_of_number(n), om, l_om, rate, om >= l_om)
-                    if om <= 10: tier_1.append(info)
-                    elif om <= 25: tier_2.append(info)
-                    elif om <= 50: tier_3.append(info)
-                    elif om <= 100: tier_4.append(info)
-                    else: tier_5.append(info)
-                l_sel, l_rem = [], []
-                for x in tier_1 + tier_2: l_sel.append(x[0])
-                for x in tier_3: (l_sel if (x[5] or x[4] >= 0.40) else l_rem).append(x[0])
-                for x in tier_4: (l_sel if x[5] else l_rem).append(x[0])
-                for x in tier_5: l_rem.append(x[0])
-                l_sel.sort(); l_rem.sort()
-
-                kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-                kpi1.metric("📊 动态历史总胜率", f"{stats_layers['total_rate']:.2f}%", f"{stats_layers['total_hits']}/{stats_layers['total_n']}期", delta_color="off")
-                kpi2.metric("⚡ 最近 7 期胜率", f"{stats_layers['r7_rate']:.1f}%", f"{stats_layers['r7_hits']}/{stats_layers['r7_n']}期", delta_color="off")
-                kpi3.metric("📅 最近 30 期胜率", f"{stats_layers['r30_rate']:.1f}%", f"{stats_layers['r30_hits']}/{stats_layers['r30_n']}期", delta_color="off")
-                kpi4.metric("🎯 分层精选码数", f"{len(l_sel)} 码")
-
-                st.success(f"🏆 **分层精选池 ({len(l_sel)}码)：**")
-                st.code(", ".join([f"{x:02d}" for x in l_sel]), language="text")
 
             # ==========================================
             # 功能 5: ⚡ 空间形态拐点选号 (OR并集)
@@ -732,7 +744,7 @@ if uploaded_file is not None:
                 st.code(", ".join([f"{x:02d}" for x in nums_or]), language="text")
 
             # ==========================================
-            # 功能 6: 🎯 拐点特赦智能选号 (功能四)
+            # 功能 6: 🎯 欲出率特赦恢复智能选号
             # ==========================================
             elif selected_func.startswith("🎯 6."):
                 st.subheader("🎯 智能精选选号（欲出率剔除 + 遗漏拐点特赦）")
