@@ -373,7 +373,7 @@ if uploaded_file is not None:
                 sub_killed_head = (sub_prev_head - 2) % 5
 
                 # 基础杀码集
-                f1_kill = set(n for n in range(1, 50) if not (sub_num_om[n] <= 25 or (26 <= sub_num_om[n] <= 50 and (sub_num_om[n] >= sub_num_last[n] or sub_num_rates[n] >= 0.40)) or (51 <= num_omission[n] <= 100 and sub_num_om[n] >= sub_num_last[n])))
+                f1_kill = set(n for n in range(1, 50) if not (sub_num_om[n] <= 25 or (26 <= sub_num_om[n] <= 50 and (sub_num_om[n] >= sub_num_last[n] or sub_num_rates[n] >= 0.40)) or (51 <= sub_num_om[n] <= 100 and sub_num_om[n] >= sub_num_last[n])))
                 
                 rec_tail_8 = defaultdict(int)
                 for s_num, _ in hist_sub[-8:]: rec_tail_8[s_num % 10] += 1
@@ -421,8 +421,11 @@ if uploaded_file is not None:
                 res_hybrid3.append(n_num in p3_24)
 
                 # 3. 全息共振精选30码三方案
+                # 方案一：七维全息风险共振法 (全量 79.45%)
                 p30_1 = set(sorted(range(1, 50), key=lambda n: ((2.0 if n in f1_kill else 0)+(3.0 if n in f2_kill else 0)+(2.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(1.0 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:30])
+                # 方案二：近期爆发型动能共振法 (近30天 83.33%)
                 p30_2 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(3.0 if n in f2_kill else 0)+(1.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(1.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0)-(1.0 if sub_num_om[n]>=sub_num_last[n] else 0), -f5_scores[n]))[:30])
+                # 方案三：防守优先大底收敛杀码法 (近7天 85.71%)
                 p30_3 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.0 if n in f2_kill else 0)+(1.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:30])
                 
                 res_pool30_1.append(n_num in p30_1)
@@ -614,7 +617,7 @@ if uploaded_file is not None:
             curr_f3_kill = set([((curr_prev_num + curr_off10 + j - 1) % 49) + 1 for j in range(10)])
             curr_rec_zod_7 = defaultdict(int)
             for _, s_zod in parsed_data[-7:]: curr_rec_zod_7[s_zod] += 1
-            curr_z_sc_list = sorted([(z, curr_rec_zod_7[z]*1.5 + (0.5 if zodiac_rates[z]<0.4 and zodiac_omission[z]<zodiac_last_omission[z] else 0) + (0.5 if z not in curr_zods_or else 0) + (1.0 if zodiac_omission[z]==0 else 0)) for z in all_zodiacs], key=lambda x: -x[1])
+            curr_z_sc_list = sorted([(z, curr_rec_zod_7[z]*1.5 + (0.5 if zodiac_rates[z]<0.4 and zodiac_omission[z]<zodiac_last_omission[z] else 0) + (0.5 if z not in zods_or else 0) + (1.0 if zodiac_omission[z]==0 else 0)) for z in all_zodiacs], key=lambda x: -x[1])
             curr_f4_kill = set([n for n in range(1, 50) if get_zodiac_of_number(n) in set(x[0] for x in curr_z_sc_list[:3])])
             curr_f5_scores = {n: (3.0 if get_zodiac_of_number(n) in curr_zods_or else 0) + (1.5+zodiac_rates[get_zodiac_of_number(n)] if get_zodiac_of_number(n) in curr_trig_zods else zodiac_rates[get_zodiac_of_number(n)]-1.0) + (1.5+tail_rates[n%10] if n%10 in curr_trig_tails else tail_rates[n%10]-1.0) + (1.0 if num_omission[n]>=num_last_omission[n] else -0.5) + (-1.0 if n//10==curr_killed_head else 0) for n in range(1, 50)}
             curr_off12 = 26 if curr_prev_num <= 16 else (2 if curr_prev_num <= 33 else 5)
