@@ -137,6 +137,9 @@ if uploaded_file is not None:
         except Exception as e: st.error(f"❌ 读取 CSV 失败: {e}"); st.stop()
     else:
         try: df = pd.read_excel(uploaded_file, header=None)
+        except ImportError:
+            st.error("❌ 缺少 openpyxl 组件，请在终端运行：`pip install openpyxl` 后重试。")
+            st.stop()
         except Exception as e: st.error(f"❌ 读取 Excel 失败: {e}"); st.stop()
     
     try:
@@ -234,7 +237,6 @@ if uploaded_file is not None:
             zodiac_transitions[parsed_data[i][1]].append(parsed_data[i+1][1])
             head_transitions[parsed_data[i][0] // 10].append(parsed_data[i+1][0] // 10)
 
-        # 增量回测滚动记录
         start_backtest_idx = min(30, max(2, total_records // 5))
 
         cur_num_idx = defaultdict(list)
@@ -362,7 +364,9 @@ if uploaded_file is not None:
             off12 = 26 if prev_num <= 16 else (2 if prev_num <= 33 else 5)
             f6_kill = set([((prev_num + off12 + j - 1) % 49) + 1 for j in range(12)])
             f6_kept = set(range(1, 50)) - f6_kill
-            f8_kill = set(n for n in range(1, 50) if (((sub_zod_rates[get_zodiac_of_number(n)]<0.4 and sub_zod_om[get_zodiac_of_number(n)]<sub_zod_last[get_zodiac_of_number(n)]) or (sub_tail_rates[n%10]<0.4 and sub_tail_om[n%10]<sub_tail_last[n%10])) and not (sub_zod_om[get_zodiac_of_number(n)]>=sub_zod_last[get_zodiac_of_number(n)] or tail_om[n%10]>=sub_tail_last[n%10])))
+            
+            # 严格使用 sub_tail_om 和 sub_tail_last (修复点 1)
+            f8_kill = set(n for n in range(1, 50) if (((sub_zod_rates[get_zodiac_of_number(n)]<0.4 and sub_zod_om[get_zodiac_of_number(n)]<sub_zod_last[get_zodiac_of_number(n)]) or (sub_tail_rates[n%10]<0.4 and sub_tail_om[n%10]<sub_tail_last[n%10])) and not (sub_zod_om[get_zodiac_of_number(n)]>=sub_zod_last[get_zodiac_of_number(n)] or sub_tail_om[n%10]>=sub_tail_last[n%10])))
             f9_kill = set([((prev_num + j - 1) % 49) + 1 for j in range(2, 14)])
             f10_scores = {n: 0.35 * sub_zod_rates[get_zodiac_of_number(n)] + 0.35 * sub_tail_rates[n%10] + 0.30 * sub_num_rates[n] - (0.15 if sub_zod_om[get_zodiac_of_number(n)] < sub_zod_last[get_zodiac_of_number(n)] else 0) - (0.15 if sub_tail_om[n%10] < sub_tail_last[n%10] else 0) - (0.10 if sub_num_om[n] < sub_num_last[n] else 0) for n in range(1, 50)}
             f10_kill = set(sorted(range(1, 50), key=lambda n: (f10_scores[n], n))[:15])
@@ -494,7 +498,6 @@ if uploaded_file is not None:
             base_st['l30_weekly'] = sum(profits[-30:]) / (30 / 7)
             tier_stats[k_name] = base_st
 
-        # 计算所有模块的连红与统计信息
         stats_hybrid1 = calc_rate_and_streaks(res_hybrid1)
         stats_hybrid2 = calc_rate_and_streaks(res_hybrid2)
         stats_hybrid3 = calc_rate_and_streaks(res_hybrid3)
@@ -593,6 +596,7 @@ if uploaded_file is not None:
             curr_zod_kill_scores[z] = s
         curr_ranked_zod_kill = sorted(all_zodiacs, key=lambda z: (-curr_zod_kill_scores[z], -zodiac_omission[z]))
 
+        # 物理神盾杀码 (修复点 2：严格将变量存入 curr_num_dead_scores)
         curr_dead_zods_top3 = set(curr_ranked_zod_kill[:3])
         curr_num_dead_scores = {}
         for n in range(1, 50):
@@ -624,9 +628,7 @@ if uploaded_file is not None:
             -curr_f5_scores[n]
         ))[:30]
 
-        # =========================================================================
-        # 🎛️ 表现优选导航菜单 (严格按实测胜率表现从高到低排序，原版展开 Radio 形式)
-        # =========================================================================
+        # 表现优选导航菜单
         st_A = tier_stats["方案A (36码平衡型)"]
         func_options = [
             f"🛡️ 1. 物理神盾·多维高胜率杀码中心 【杀8码近30: {stats_num_k8['r30_rate']:.1f}% ｜ 7天100% ｜ 杀10码: {stats_num_k10['r30_rate']:.1f}%】",
@@ -654,7 +656,7 @@ if uploaded_file is not None:
         if 'active_func_idx' not in st.session_state:
             st.session_state['active_func_idx'] = 0
 
-        # 主页面顶部常用快捷直达区（排在最前的四大王者）
+        # 主页面顶部常用快捷直达区
         st.write("---")
         st.markdown("#### ⚡ 表现最优王牌模型一键直达：")
         btn_c1, btn_c2, btn_c3, btn_c4 = st.columns(4)
@@ -686,23 +688,21 @@ if uploaded_file is not None:
                 st.session_state['active_func_idx'] = (st.session_state['active_func_idx'] + 1) % len(func_options)
                 st.rerun()
 
-        # 侧边栏：经典原生 Radio 导航，全展开一目了然
+        # 侧边栏：经典原生展开 Radio 导航（修复点 3：无冲突无警告）
         st.sidebar.markdown("### 🎛️ 功能快速直达 (按战绩排序)")
-        def on_radio_change():
-            st.session_state['active_func_idx'] = func_options.index(st.session_state.sidebar_nav_key)
+        st.session_state['active_func_idx'] = max(0, min(st.session_state['active_func_idx'], len(func_options) - 1))
 
         sidebar_choice = st.sidebar.radio(
             "选择查看模块：",
             options=func_options,
-            index=st.session_state['active_func_idx'],
-            key="sidebar_nav_key",
-            on_change=on_radio_change
+            index=st.session_state['active_func_idx']
         )
+        st.session_state['active_func_idx'] = func_options.index(sidebar_choice)
         selected_func = sidebar_choice
         st.write("---")
 
         # ==========================================
-        # 模块 1: 🛡️ 物理神盾·多维高胜率杀码中心 (表现第1)
+        # 模块 1: 🛡️ 物理神盾·多维高胜率杀码中心
         # ==========================================
         if selected_func.startswith("🛡️ 1."):
             st.subheader("🛡️ 物理神盾·多维高胜率杀码中心（尾数衰歇 + 拓扑死角 + 杀肖共振）")
@@ -733,7 +733,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(st_nk, 49 - n_kill_codes, key_prefix="mod1")
 
         # ==========================================
-        # 模块 2: 👑 神兽天盾·高胜率杀肖中心 (表现第2)
+        # 模块 2: 👑 神兽天盾·高胜率杀肖中心
         # ==========================================
         elif selected_func.startswith("👑 2."):
             st.subheader("👑 神兽天盾·高胜率杀肖中心（连庄衰竭 + 透支休眠 + 零转移死角）")
@@ -768,7 +768,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(st_zk, len(kept_nums), key_prefix="mod2")
 
         # ==========================================
-        # 模块 3: 🎯 尾数动态惯性整杀10码 (表现第3)
+        # 模块 3: 🎯 尾数动态惯性整杀10码
         # ==========================================
         elif selected_func.startswith("🎯 3."):
             st.subheader("🎯 尾数动态惯性整杀 10 码（杀过热重叠 2 尾 ｜ 胜率突破 87.8%）")
@@ -788,7 +788,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(stats_tail10, 39, key_prefix="mod3")
 
         # ==========================================
-        # 模块 4: 🚀 非对称环形拓扑位移杀10码 (表现第4)
+        # 模块 4: 🚀 非对称环形拓扑位移杀10码
         # ==========================================
         elif selected_func.startswith("🚀 4."):
             st.subheader("🚀 非对称环形拓扑位移杀 10 码（精选 39 码 ｜ 胜率突破 87.3%）")
@@ -806,7 +806,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(stats_asym10, 39, key_prefix="mod4")
 
         # ==========================================
-        # 模块 5: 🧊 冷热遗漏分层控码选号 (表现第5)
+        # 模块 5: 🧊 冷热遗漏分层控码选号
         # ==========================================
         elif selected_func.startswith("🧊 5."):
             st.subheader("🧊 五层冷热遗漏梯级选号与杀号引擎")
@@ -826,7 +826,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(stats_layers, len(l_sel), key_prefix="mod5")
 
         # ==========================================
-        # 模块 6: 💰 阶梯对冲分区分级仓位 (表现第6)
+        # 模块 6: 💰 阶梯对冲分区分级仓位
         # ==========================================
         elif selected_func.startswith("💰 6."):
             st.subheader("💰 阶梯对冲仓位对冲模型（20元 / 10元 / 5元区 · 中5元保本盈利架构）")
@@ -861,7 +861,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(st_info, n20+n10+n5, key_prefix="mod6")
 
         # ==========================================
-        # 模块 7: 👑 全维动能多因子打分 Top 40 (表现第7)
+        # 模块 7: 👑 全维动能多因子打分 Top 40
         # ==========================================
         elif selected_func.startswith("👑 7."):
             st.subheader("👑 全维动能多因子打分法（固定锁定 40 码大底 ｜ 胜率突破 85.0%）")
@@ -878,7 +878,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(stats_top40, 40, key_prefix="mod7")
 
         # ==========================================
-        # 模块 8: 🎯 全息共振精选30码 (表现第8)
+        # 模块 8: 🎯 全息共振精选30码
         # ==========================================
         elif selected_func.startswith("🎯 8."):
             st.subheader("🎯 全息共振精选 30 码（精准杀 19 码 · 全量胜率逼近 80% · 近30天达 83.3%）")
@@ -910,7 +910,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(st_p30, 30, key_prefix="mod8")
 
         # ==========================================
-        # 模块 9: 🤝 强强联手·多维交集共振池 (表现第9)
+        # 模块 9: 🤝 强强联手·多维交集共振池
         # ==========================================
         elif selected_func.startswith("🤝 9."):
             st.subheader("🤝 强强联手·多维交集共振池（正交多算法重叠取交集）")
@@ -921,7 +921,7 @@ if uploaded_file is not None:
             ], index=0)
 
             if "组合 A" in pair_choice:
-                st_inter = stats_inter_6_7 # 映射到高共振交集
+                st_inter = stats_inter_6_7
                 cur_inter = sorted(set(curr_f4_kept) - set(curr_sorted_dead_nums[:10]))
                 desc = "黄金杀三肖（留9肖37码）联合物理神盾杀10码，胜率高达 76.2%~80.0%，近7天满贯连红！"
             elif "组合 B" in pair_choice:
@@ -946,7 +946,7 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(st_inter, len(cur_inter), key_prefix="mod9")
 
         # ==========================================
-        # 模块 10: 🛡️ 三区间非对称杀12码 (表现第10)
+        # 模块 10: 🛡️ 三区间非对称杀12码
         # ==========================================
         elif selected_func.startswith("🛡️ 10."):
             st.subheader("🛡️ 三区间非对称盲区杀 12 码（精选 37 码）")
