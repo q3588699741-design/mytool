@@ -6,7 +6,51 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide", initial_sidebar_state="expanded")
-st.title("📊 开奖记录全维度综合统计看板 (表现优选版 · 含连红率与测算器)")
+
+# =========================================================================
+# 🔒 简单密码安全验证模块 (默认密码: 888888，可在下方随时修改)
+# =========================================================================
+ADMIN_PASSWORD = "888888"  # 👉 在这里自定义您的专属访问密码
+
+def check_password():
+    """验证用户密码，通过返回 True，未通过则拦截页面"""
+    def password_entered():
+        if st.session_state.get("password_input") == ADMIN_PASSWORD:
+            st.session_state["password_correct"] = True
+            if "password_input" in st.session_state:
+                del st.session_state["password_input"]  # 清除输入框明文残留
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # 初始未登录状态
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.write("")
+            st.write("")
+            st.markdown("### 🔒 内部数据看板访问验证")
+            st.info("💡 本看板包含内部核心算法模型，请输入授权密码访问。")
+            st.text_input("请输入访问密码：", type="password", on_change=password_entered, key="password_input")
+        return False
+    elif not st.session_state["password_correct"]:
+        # 密码错误状态
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.write("")
+            st.write("")
+            st.markdown("### 🔒 内部数据看板访问验证")
+            st.text_input("请输入访问密码：", type="password", on_change=password_entered, key="password_input")
+            st.error("❌ 密码错误，请重新输入！")
+        return False
+    else:
+        return True
+
+# 拦截判断：密码未通过前彻底阻断后续所有代码执行
+if not check_password():
+    st.stop()
+# =========================================================================
+
+st.title("📊 开奖记录全维度综合统计看板 (安全认证版)")
 st.caption("神盾杀码 96.7% ｜ 天盾杀肖 93.3% ｜ 尾数杀10 90% ｜ 阶梯对冲 86.7% ｜ 精选30码 83.3% ｜ 全模块带连红与测算器")
 
 # 定义全局标准集合
@@ -365,7 +409,7 @@ if uploaded_file is not None:
             f6_kill = set([((prev_num + off12 + j - 1) % 49) + 1 for j in range(12)])
             f6_kept = set(range(1, 50)) - f6_kill
             
-            # 严格使用 sub_tail_om 和 sub_tail_last (修复点 1)
+            # 使用 sub_tail_om 修复历史索引笔误
             f8_kill = set(n for n in range(1, 50) if (((sub_zod_rates[get_zodiac_of_number(n)]<0.4 and sub_zod_om[get_zodiac_of_number(n)]<sub_zod_last[get_zodiac_of_number(n)]) or (sub_tail_rates[n%10]<0.4 and sub_tail_om[n%10]<sub_tail_last[n%10])) and not (sub_zod_om[get_zodiac_of_number(n)]>=sub_zod_last[get_zodiac_of_number(n)] or sub_tail_om[n%10]>=sub_tail_last[n%10])))
             f9_kill = set([((prev_num + j - 1) % 49) + 1 for j in range(2, 14)])
             f10_scores = {n: 0.35 * sub_zod_rates[get_zodiac_of_number(n)] + 0.35 * sub_tail_rates[n%10] + 0.30 * sub_num_rates[n] - (0.15 if sub_zod_om[get_zodiac_of_number(n)] < sub_zod_last[get_zodiac_of_number(n)] else 0) - (0.15 if sub_tail_om[n%10] < sub_tail_last[n%10] else 0) - (0.10 if sub_num_om[n] < sub_num_last[n] else 0) for n in range(1, 50)}
@@ -498,6 +542,7 @@ if uploaded_file is not None:
             base_st['l30_weekly'] = sum(profits[-30:]) / (30 / 7)
             tier_stats[k_name] = base_st
 
+        # 计算所有模块的连红与统计信息
         stats_hybrid1 = calc_rate_and_streaks(res_hybrid1)
         stats_hybrid2 = calc_rate_and_streaks(res_hybrid2)
         stats_hybrid3 = calc_rate_and_streaks(res_hybrid3)
@@ -596,7 +641,7 @@ if uploaded_file is not None:
             curr_zod_kill_scores[z] = s
         curr_ranked_zod_kill = sorted(all_zodiacs, key=lambda z: (-curr_zod_kill_scores[z], -zodiac_omission[z]))
 
-        # 物理神盾杀码 (修复点 2：严格将变量存入 curr_num_dead_scores)
+        # 物理神盾杀码
         curr_dead_zods_top3 = set(curr_ranked_zod_kill[:3])
         curr_num_dead_scores = {}
         for n in range(1, 50):
@@ -656,7 +701,7 @@ if uploaded_file is not None:
         if 'active_func_idx' not in st.session_state:
             st.session_state['active_func_idx'] = 0
 
-        # 主页面顶部常用快捷直达区
+        # 主页面顶部快捷直达
         st.write("---")
         st.markdown("#### ⚡ 表现最优王牌模型一键直达：")
         btn_c1, btn_c2, btn_c3, btn_c4 = st.columns(4)
@@ -677,7 +722,7 @@ if uploaded_file is not None:
                 st.session_state['active_func_idx'] = 7
                 st.rerun()
 
-        # 前后翻页双通道
+        # 翻页控制
         nav_col1, nav_col2 = st.columns(2)
         with nav_col1:
             if st.button("⬅️ 上一个功能", use_container_width=True):
@@ -688,7 +733,7 @@ if uploaded_file is not None:
                 st.session_state['active_func_idx'] = (st.session_state['active_func_idx'] + 1) % len(func_options)
                 st.rerun()
 
-        # 侧边栏：经典原生展开 Radio 导航（修复点 3：无冲突无警告）
+        # 侧边栏：经典原生 Radio 导航
         st.sidebar.markdown("### 🎛️ 功能快速直达 (按战绩排序)")
         st.session_state['active_func_idx'] = max(0, min(st.session_state['active_func_idx'], len(func_options) - 1))
 
@@ -1152,6 +1197,12 @@ if uploaded_file is not None:
                 prob_parts = sorted([(t, counts[t], (counts[t]/total*100 if total>0 else 0.0)) for t in all_tails], key=lambda x: (-x[1], x[0]))
                 tail_trans_md += f"| **{tail}尾** | {total}次 | {' ｜ '.join([f'{t}尾: {p:.1f}%({c}次)' for t, c, p in prob_parts])} |\n"
             st.markdown(tail_trans_md)
+
+        # 侧边栏底部提供退出登录功能
+        st.sidebar.write("---")
+        if st.sidebar.button("🔒 退出登录 / 锁定页面", use_container_width=True):
+            st.session_state["password_correct"] = False
+            st.rerun()
 
     except Exception as global_ex:
         st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
