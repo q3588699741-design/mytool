@@ -6,7 +6,7 @@ import traceback
 
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide", initial_sidebar_state="expanded")
-st.title("📊 开奖记录全维度综合统计看板 (21合1 全维战法终极旗舰版)")
+st.title("📊 开奖记录全维度综合统计看板 (含神兽杀肖·物理杀码·极限15-20码旗舰版)")
 st.caption("神兽天盾杀肖 ｜ 物理神盾杀码 ｜ 极限15-20码 ｜ 多维交集共振 ｜ 阶梯对冲 ｜ 留24码 ｜ 精选30码")
 
 # 定义全局标准集合
@@ -77,7 +77,7 @@ if uploaded_file is not None:
             st.stop()
 
         # =========================================================================
-        # ⚡ 极速全维数据索引与增量回测引擎 (单次执行 < 0.25 秒，杜绝任何卡死转圈)
+        # ⚡ 极速全维数据索引与增量回测引擎 (单次执行 < 0.25 秒，杜绝卡顿)
         # =========================================================================
         num_counts = defaultdict(int)
         tail_counts = defaultdict(int)
@@ -203,7 +203,7 @@ if uploaded_file is not None:
         res_asym12, res_or, res_f4, res_blind12, res_kill15 = [], [], [], [], []
         res_seasons, res_elements, res_segments = [], [], []
 
-        # 新增顶尖模块容器
+        # 顶尖新增模块记录容器
         res_zod_k2, res_zod_k3, res_zod_k4, res_zod_k5 = [], [], [], []
         res_num_k8, res_num_k10, res_num_k12 = [], [], []
         res_slim_20, res_slim_18, res_slim_16, res_slim_15 = [], [], [], []
@@ -262,7 +262,7 @@ if uploaded_file is not None:
             sub_prev_head = prev_num // 10
             sub_killed_head = (sub_prev_head - 2) % 5
 
-            # 基础杀码集
+            # 基础模块初筛
             f1_kill = set(n for n in range(1, 50) if not (sub_num_om[n] <= 25 or (26 <= sub_num_om[n] <= 50 and (sub_num_om[n] >= sub_num_last[n] or sub_num_rates[n] >= 0.40)) or (51 <= sub_num_om[n] <= 100 and sub_num_om[n] >= sub_num_last[n])))
             f1_kept = set(range(1, 50)) - f1_kill
             
@@ -334,7 +334,7 @@ if uploaded_file is not None:
             res_elements.append(n_num in set([n for en in trig_elem for n in five_elements[en]]))
             res_segments.append(n_num in set([n for sgn in trig_seg for n in seven_segments[sgn]]))
 
-            # 🌟 新增 1：神兽天盾杀肖体系 (杀2/3/4/5肖)
+            # 神兽天盾杀肖 (杀2/3/4/5肖)
             trans1 = defaultdict(int)
             for idx_t in range(h_len - 1):
                 if parsed_data[idx_t][1] == prev_zod:
@@ -356,7 +356,7 @@ if uploaded_file is not None:
             res_zod_k4.append(n_zod not in set(ranked_zod_kill[:4]))
             res_zod_k5.append(n_zod not in set(ranked_zod_kill[:5]))
 
-            # 🌟 新增 2：物理神盾杀码体系 (杀8/10/12码)
+            # 物理神盾杀码 (杀8/10/12码)
             dead_zods_top3 = set(ranked_zod_kill[:3])
             num_dead_scores = {}
             for n in range(1, 50):
@@ -375,7 +375,7 @@ if uploaded_file is not None:
             res_num_k10.append(n_num not in set(sorted_dead_nums[:10]))
             res_num_k12.append(n_num not in set(sorted_dead_nums[:12]))
 
-            # 🌟 新增 3：极限精选 15-20 码狙击模型
+            # 极限精选 15-20 码狙击模型
             base_24_s3 = sorted(range(1, 50), key=lambda n: (1 if n in (f1_kill|f2_kill|f3_kill|f6_kill) else 0, -f5_scores[n]))[:24]
             pool_20 = sorted(base_24_s3, key=lambda n: (
                 f5_scores[n] + (2.0 if sub_num_om[n]>=sub_num_last[n] else 0.0) -
@@ -390,7 +390,7 @@ if uploaded_file is not None:
             res_slim_16.append(n_num in set(pool_16))
             res_slim_15.append(n_num in set(pool_15))
 
-            # 🌟 新增 4：多核交集共振池
+            # 多核交集共振
             res_inter_4_5.append(n_num in (f1_kept & f2_kept))
             res_inter_6_7.append(n_num in (f3_kept & f4_kept))
             res_inter_3_4_5.append(n_num in (p30_1 & f1_kept & f2_kept))
@@ -476,9 +476,7 @@ if uploaded_file is not None:
         stats_elements = calc_rate_stats(res_elements)
         stats_segments = calc_rate_stats(res_segments)
 
-        # =========================================================================
-        # 准备最新当期下注候选（第 total_records + 1 期）
-        # =========================================================================
+        # 最新当期下注候选（第 total_records + 1 期）
         curr_prev_num = parsed_data[-1][0]
         curr_prev_zod = parsed_data[-1][1]
         curr_trig_z2 = [zn for zn in zodiac_zones_2 if zone_omission[zn] >= zone_last_omission[zn]]
@@ -574,7 +572,7 @@ if uploaded_file is not None:
         ))[:30]
 
         # =========================================================================
-        # 🎛️ 终极导航架构：21 大全维智能模块列表
+        # 🎛️ 经典原版导航菜单结构 (恢复 st.sidebar.radio 一目了然列表)
         # =========================================================================
         st_A = tier_stats["方案A (36码平衡型)"]
         func_options = [
@@ -601,44 +599,54 @@ if uploaded_file is not None:
             "🔄 21. 前后行状态转移概率矩阵"
         ]
 
-        # 状态防冲突单向流
-        if 'master_page_idx' not in st.session_state:
-            st.session_state['master_page_idx'] = 0
+        if 'active_func_idx' not in st.session_state:
+            st.session_state['active_func_idx'] = 0
 
-        # 主界面快捷按钮区
+        # 主页面顶部常用快捷直达区
         st.write("---")
-        st.markdown("#### ⚡ 常用王牌战法一键秒级直达：")
-        q1, q2, q3, q4, q5, q6 = st.columns(6)
-        with q1:
-            if st.button("👑 杀肖中心", use_container_width=True):
-                st.session_state['master_page_idx'] = 4
-        with q2:
-            if st.button("🛡️ 物理杀码", use_container_width=True):
-                st.session_state['master_page_idx'] = 5
-        with q3:
-            if st.button("⚡ 15-20码", use_container_width=True):
-                st.session_state['master_page_idx'] = 3
-        with q4:
-            if st.button("🎯 精选30码", use_container_width=True):
-                st.session_state['master_page_idx'] = 2
-        with q5:
-            if st.button("🔥 留24码", use_container_width=True):
-                st.session_state['master_page_idx'] = 1
-        with q6:
-            if st.button("🤝 交集共振", use_container_width=True):
-                st.session_state['master_page_idx'] = 6
+        st.markdown("#### ⚡ 常用王牌战法一键直达：")
+        btn_c1, btn_c2, btn_c3, btn_c4 = st.columns(4)
+        with btn_c1:
+            if st.button("👑 神兽天盾杀肖", use_container_width=True):
+                st.session_state['active_func_idx'] = 4
+                st.rerun()
+        with btn_c2:
+            if st.button("🛡️ 物理神盾杀码", use_container_width=True):
+                st.session_state['active_func_idx'] = 5
+                st.rerun()
+        with btn_c3:
+            if st.button("⚡ 极限15-20码", use_container_width=True):
+                st.session_state['active_func_idx'] = 3
+                st.rerun()
+        with btn_c4:
+            if st.button("🎯 全息精选30码", use_container_width=True):
+                st.session_state['active_func_idx'] = 2
+                st.rerun()
 
-        # 侧边栏导航控制
-        st.sidebar.markdown("### 🎛️ 模块快速切换")
-        chosen_page = st.sidebar.selectbox(
+        # 前后翻页双通道
+        nav_col1, nav_col2 = st.columns(2)
+        with nav_col1:
+            if st.button("⬅️ 上一个功能", use_container_width=True):
+                st.session_state['active_func_idx'] = (st.session_state['active_func_idx'] - 1) % len(func_options)
+                st.rerun()
+        with nav_col2:
+            if st.button("下一个功能 ➡️", use_container_width=True):
+                st.session_state['active_func_idx'] = (st.session_state['active_func_idx'] + 1) % len(func_options)
+                st.rerun()
+
+        # 侧边栏：经典展开式 Radio 菜单（原汁原味，一览无余）
+        st.sidebar.markdown("### 🎛️ 功能快速直达")
+        def on_radio_change():
+            st.session_state['active_func_idx'] = func_options.index(st.session_state.sidebar_nav_key)
+
+        sidebar_choice = st.sidebar.radio(
             "选择查看模块：",
-            options=range(len(func_options)),
-            format_func=lambda x: func_options[x],
-            index=st.session_state['master_page_idx']
+            options=func_options,
+            index=st.session_state['active_func_idx'],
+            key="sidebar_nav_key",
+            on_change=on_radio_change
         )
-        st.session_state['master_page_idx'] = chosen_page
-
-        selected_func = func_options[st.session_state['master_page_idx']]
+        selected_func = sidebar_choice
         st.write("---")
 
         # ==========================================
@@ -738,16 +746,10 @@ if uploaded_file is not None:
             st.code(", ".join([f"{x:02d}" for x in sorted([n for n in range(1, 50) if n not in p30_curr])]), language="text")
 
         # ==========================================
-        # 🌟 模块 4: ⚡ 极限高盈亏比 15-20 码狙击模型
+        # 模块 4: ⚡ 极限高盈亏比 15-20 码狙击模型
         # ==========================================
         elif selected_func.startswith("⚡ 4."):
-            st.subheader("⚡ 极限高盈亏比 15~20 码狙击模型（小本金博取高翻倍红利）")
-            st.markdown("""
-            💡 **高盈亏比数理逻辑**：
-            * **保本胜率极低**：15 码只需 31.9%、16 码只需 34.0%、20 码只需 42.5%；
-            * **中一次顶两次**：单码买 20 元，中一次净赚 **+540 ~ +640 元**，亏一次仅亏 **-300 ~ -400 元**，盈亏比最高达 **`2.13 : 1`**！
-            """)
-
+            st.subheader("⚡ 极限高盈亏比 15~20 码狙击模型（小本金博取翻倍红利）")
             slim_plan = st.radio("👉 选择具体极限规格：", [
                 "20 码：近期爆发王 (近30天胜率 70.0% ｜ 全量 54.34% ｜ 盈亏比 1.35:1)",
                 "18 码：近期高胜王 (近30天胜率 63.3% ｜ 全量 48.86% ｜ 盈亏比 1.61:1)",
@@ -774,7 +776,7 @@ if uploaded_file is not None:
             st.code(", ".join([f"{x:02d}" for x in sorted(cur_sl)]), language="text")
 
         # ==========================================
-        # 🌟 模块 5: 👑 神兽天盾·高胜率杀肖中心
+        # 模块 5: 👑 神兽天盾·高胜率杀肖中心
         # ==========================================
         elif selected_func.startswith("👑 5."):
             st.subheader("👑 神兽天盾·高胜率杀肖中心（连庄衰竭 + 透支休眠 + 零转移死角）")
@@ -811,7 +813,7 @@ if uploaded_file is not None:
             st.code(", ".join([f"{x:02d}" for x in kept_nums]), language="text")
 
         # ==========================================
-        # 🌟 模块 6: 🛡️ 物理神盾·多维高胜率杀码中心
+        # 模块 6: 🛡️ 物理神盾·多维高胜率杀码中心
         # ==========================================
         elif selected_func.startswith("🛡️ 6."):
             st.subheader("🛡️ 物理神盾·多维高胜率杀码中心（尾数衰歇 + 拓扑死角 + 杀肖共振）")
@@ -843,7 +845,7 @@ if uploaded_file is not None:
             st.code(", ".join([f"{x:02d}" for x in safe_nums_list]), language="text")
 
         # ==========================================
-        # 🌟 模块 7: 🤝 强强联手·多维交集共振池
+        # 模块 7: 🤝 强强联手·多维交集共振池
         # ==========================================
         elif selected_func.startswith("🤝 7."):
             st.subheader("🤝 强强联手·多维交集共振池（正交多算法重叠取交集）")
