@@ -2338,4 +2338,171 @@ if uploaded_file is not None:
             render_financial_calculator_and_streaks(stats_asym12, 37, key_prefix="mod10")
 
         # ==========================================
-        #
+        # 模块 25: ⚡ 空间形态拐点选号 (OR并集)
+        # ==========================================
+        elif selected_func.startswith("⚡ 25."):
+            st.subheader("⚡ 生肖空间形态分区智能选号 (OR并集)")
+            nums_or = sorted([n for n in range(1, 50) if get_zodiac_of_number(n) in curr_zods_or])
+            render_kpi_header(stats_or, f"全包抄: {len(nums_or)} 码")
+
+            st.success(f"🏆 **空间形态全包抄池 ({len(nums_or)}码)：**")
+            st.code(", ".join([f"{x:02d}" for x in nums_or]), language="text")
+
+            render_financial_calculator_and_streaks(stats_or, len(nums_or), key_prefix="mod11")
+
+        # ==========================================
+        # 模块 26: 🎯 欲出率特赦恢复智能选号
+        # ==========================================
+        elif selected_func.startswith("🎯 26."):
+            st.subheader("🎯 智能精选选号（欲出率剔除 + 遗漏拐点特赦）")
+            f4_sel = sorted([n for n in range(1, 50) if n not in curr_f8_kill])
+            render_kpi_header(stats_f4, f"特赦恢复: {len(f4_sel)} 码")
+
+            st.success(f"🏆 **特赦恢复精选池 ({len(f4_sel)}码)：**")
+            st.code(", ".join([f"{x:02d}" for x in f4_sel]), language="text")
+
+            render_financial_calculator_and_streaks(stats_f4, len(f4_sel), key_prefix="mod12")
+
+        # ==========================================
+        # 模块 27: 🛡️ 近前盲区连续杀12码
+        # ==========================================
+        elif selected_func.startswith("🛡️ 27."):
+            st.subheader("🛡️ 近前盲区位移连续杀 12 码")
+            sel_b37 = sorted([n for n in range(1, 50) if n not in curr_f9_kill])
+            render_kpi_header(stats_blind12, "保留: 严格 37 码")
+
+            st.error("🚫 **剔除 12 码：**")
+            st.code(", ".join([f"{x:02d}" for x in sorted(curr_f9_kill)]), language="text")
+            st.success("🏆 **保留 37 码：**")
+            st.code(", ".join([f"{x:02d}" for x in sel_b37]), language="text")
+
+            render_financial_calculator_and_streaks(stats_blind12, 37, key_prefix="mod13")
+
+        # ==========================================
+        # 模块 28: ❌ 综合反向杀15码
+        # ==========================================
+        elif selected_func.startswith("❌ 28."):
+            st.subheader("❌ 综合概率模型：精选 15 个死码")
+            top15_nums = sorted([x[0] for x in sorted(curr_f10_scores.items(), key=lambda x: (x[1], x[0]))[:15]])
+            render_kpi_header(stats_kill15, "杀 15 码 (留34码)")
+
+            st.error("🚫 **15 个死码池：**")
+            st.code(", ".join([f"{x:02d}" for x in top15_nums]), language="text")
+
+            render_financial_calculator_and_streaks(stats_kill15, 34, key_prefix="mod14")
+
+        # ==========================================
+        # 模块 29: 🔥 混合规则共振留24码
+        # ==========================================
+        elif selected_func.startswith("🔥 29."):
+            st.subheader("🔥 混合规则共振精选 24 码（千元平注暴利模型 · 胜率 64%~73%）")
+            h_choice = st.radio("👉 选择混合规则方案：", [
+                "方案三：四重防线层层剥离法 (近30天胜率 73.33% · 爆发冠军)",
+                "方案二：冷热强化五维共振法 (近30天胜率 70.00% · 长短线双高)",
+                "方案一：六维风险积分共振法 (全量胜率 66.20% · 长期利润冠军)"
+            ], index=0)
+            if "方案三" in h_choice: st_h, p24_curr = stats_hybrid3, sorted(curr_base_24_s3)
+            elif "方案二" in h_choice:
+                st_h = stats_hybrid2
+                p24_curr = sorted(range(1, 50), key=lambda n: ((2.0 if n in curr_f1_kill else 0)+(2.5 if n in curr_f2_kill else 0)+(2.5 if n in curr_f3_kill else 0)+(1.0 if n in curr_f4_kill else 0)+(2.5 if n in curr_f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in curr_zods_sea else 0), -curr_f5_scores[n]))[:24]
+            else: st_h, p24_curr = stats_hybrid1, sorted(curr_base_24_s1)
+
+            render_kpi_header(st_h, "严格 24 码 (定额)")
+
+            st.success("🏆 **【本期混合精选 24 码大底池】（点击右上角复制）：**")
+            st.code(", ".join([f"{x:02d}" for x in sorted(p24_curr)]), language="text")
+            st.error("🚫 **【本期混合联立剔除的 25 个死码】：**")
+            st.code(", ".join([f"{x:02d}" for x in sorted([n for n in range(1, 50) if n not in p24_curr])]), language="text")
+
+            render_financial_calculator_and_streaks(st_h, 24, key_prefix="mod15")
+
+        # ==========================================
+        # 模块 30: ⚡ 极限高盈亏比 15-20 码狙击模型
+        # ==========================================
+        elif selected_func.startswith("⚡ 30."):
+            st.subheader("⚡ 极限高盈亏比 15~20 码狙击模型（小本金博取翻倍红利）")
+            slim_plan = st.radio("👉 选择具体极限规格：", [
+                "20 码：近期爆发王 (近30天胜率 70.0% ｜ 全量 54.34% ｜ 盈亏比 1.35:1)",
+                "18 码：近期高胜王 (近30天胜率 63.3% ｜ 全量 48.86% ｜ 盈亏比 1.61:1)",
+                "16 码：高盈亏比王 (近30天胜率 53.3% ｜ 全量 45.66% ｜ 盈亏比 1.94:1)",
+                "15 码：超限狙击王 (中一次顶两次半 ｜ 近30天 53.3% ｜ 盈亏比 2.13:1)"
+            ], index=0)
+
+            if "20 码" in slim_plan: st_sl, cur_sl, n_codes = stats_slim_20, curr_pool_20, 20
+            elif "18 码" in slim_plan: st_sl, cur_sl, n_codes = stats_slim_18, curr_pool_18, 18
+            elif "16 码" in slim_plan: st_sl, cur_sl, n_codes = stats_slim_16, curr_pool_16, 16
+            else: st_sl, cur_sl, n_codes = stats_slim_15, curr_pool_15, 15
+
+            render_kpi_header(st_sl, f"极限精选 {n_codes} 码")
+
+            st.success(f"🏆 **【本期极限精选 {n_codes} 码候选池】（点击右上角复制）：**")
+            st.code(", ".join([f"{x:02d}" for x in sorted(cur_sl)]), language="text")
+
+            render_financial_calculator_and_streaks(st_sl, n_codes, key_prefix="mod16")
+
+        # ==========================================
+        # 模块 31: 🌸 四季 / 🪙 五行 / 🔢 七段数
+        # ==========================================
+        elif selected_func.startswith("🌸 31."):
+            st.subheader("🌸 四季 ｜ 🪙 五行 ｜ 🔢 七段数 周期形态拐点智能选号")
+            t_s1, t_s2, t_s3 = st.tabs(["🌸 四季生肖拐点", "🪙 五行属性拐点", "🔢 七段数拐点"])
+            with t_s1:
+                sea_nums = sorted([n for n in range(1, 50) if get_zodiac_of_number(n) in curr_zods_sea])
+                st.metric("四季生肖胜率", f"{stats_seasons['total_rate']:.1f}%", f"近30天: {stats_seasons['r30_rate']:.1f}% ｜ 近14天: {stats_seasons['r14_rate']:.0f}%")
+                st.code(", ".join([f"{x:02d}" for x in sea_nums]), language="text")
+                render_financial_calculator_and_streaks(stats_seasons, len(sea_nums), key_prefix="mod17_s")
+            with t_s2:
+                trig_elem = [en for en in five_elements if element_omission[en] >= element_last_omission[en]]
+                elem_nums = sorted(list(set([n for en in trig_elem for n in five_elements[en]])))
+                st.metric("五行属性胜率", f"{stats_elements['total_rate']:.1f}%", f"近30天: {stats_elements['r30_rate']:.1f}% ｜ 近14天: {stats_elements['r14_rate']:.0f}%")
+                st.code(", ".join([f"{x:02d}" for x in elem_nums]), language="text")
+                render_financial_calculator_and_streaks(stats_elements, len(elem_nums), key_prefix="mod17_e")
+            with t_s3:
+                trig_seg = [sgn for sgn in seven_segments if segment_omission[sgn] >= segment_last_omission[sgn]]
+                seg_nums = sorted(list(set([n for sgn in trig_seg for n in seven_segments[sgn]])))
+                st.metric("七段数胜率", f"{stats_segments['total_rate']:.1f}%", f"近30天: {stats_segments['r30_rate']:.1f}% ｜ 近14天: {stats_segments['r14_rate']:.0f}%")
+                st.code(", ".join([f"{x:02d}" for x in seg_nums]), language="text")
+                render_financial_calculator_and_streaks(stats_segments, len(seg_nums), key_prefix="mod17_sg")
+
+        # ==========================================
+        # 模块 32: ⏳ 当前双重遗漏与欲出总榜
+        # ==========================================
+        elif selected_func.startswith("⏳ 32."):
+            st.subheader("⏳ 各指标当前双重遗漏与欲出率深度统计")
+            n_list = [(n, num_omission[n], num_last_omission[n], num_rates[n]) for n in range(1, 50)]
+            n_list.sort(key=lambda x: -x[3])
+            md = "| 排名 | 号码 | 当前遗漏 | 上次遗漏 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: |\n"
+            for r, (n, miss, l_miss, rate) in enumerate(n_list, 1):
+                tags = (" 🚨" if miss >= l_miss else "") + (" 🔥" if rate >= 0.4 else "")
+                md += f"| {r} | **{n:02d}**{tags} | {miss}期 | {l_miss}期 | {rate:.2f} |\n"
+            st.markdown(md)
+
+        # ==========================================
+        # 模块 33: 🔥 大盘总量冷热排行统计
+        # ==========================================
+        elif selected_func.startswith("🔥 33."):
+            st.subheader("📊 整体出现次数总计 (全量大盘分析)")
+            num_hot = sorted([(n, num_counts[n]) for n in range(1, 50)], key=lambda x: (-x[1], x[0]))
+            md = "| 排名 | 号码 | 出现次数 |\n| :---: | :---: |\n"
+            for rank, (n, cnt) in enumerate(num_hot, 1):
+                md += f"| {rank} | **{n:02d}** | {cnt}次 |\n"
+            st.markdown(md)
+
+        # ==========================================
+        # 模块 34: 🔄 前后行状态转移概率矩阵
+        # ==========================================
+        elif selected_func.startswith("🔄 34."):
+            st.subheader("🔄 纵向序列演变规律概率分布")
+            tail_trans_md = "| 当前尾数 | 历史总计 | 下一行尾数概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
+            for tail in range(10):
+                nexts = tail_transitions[tail]
+                total = len(nexts)
+                counts = defaultdict(int)
+                for n in nexts: counts[n] += 1
+                prob_parts = sorted([(t, counts[t], (counts[t]/total*100 if total>0 else 0.0)) for t in all_tails], key=lambda x: (-x[1], x[0]))
+                tail_trans_md += f"| **{tail}尾** | {total}次 | {' ｜ '.join([f'{t}尾: {p:.1f}%({c}次)' for t, c, p in prob_parts])} |\n"
+            st.markdown(tail_trans_md)
+
+    except Exception as global_ex:
+        st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
+        st.code(traceback.format_exc(), language="text")
