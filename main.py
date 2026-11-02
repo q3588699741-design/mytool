@@ -8,7 +8,7 @@ import traceback
 # 页面基础配置
 st.set_page_config(page_title="数据全维度智能统计看板", layout="wide", initial_sidebar_state="expanded")
 
-st.title("📊 开奖记录全维度综合统计看板 (含独立杀2码/杀5码·终极旗舰版)")
+st.title("📊 开奖记录全维度综合统计看板 (含修复版·双独立杀码·旗舰版)")
 st.caption("🤖 10-40码全自动匹配 ｜ 新版杀3肖近14天100% ｜ 时空杀2码 98.6% ｜ 晶格杀5码 96.0% ｜ 全周期风控与连黑看板")
 
 # 定义全局标准集合
@@ -85,7 +85,7 @@ zod_to_z3 = {z: zn for zn, zl in zodiac_zones_3.items() for z in zl}
 zod_to_sea = {z: sn for sn, sl in zodiac_seasons.items() for z in sl}
 
 # =========================================================================
-# 📈 全周期连红与风控统计解析函数 (近14天/近3天命中 与 近30天/近14天连黑)
+# 📈 全周期连红与风控统计解析函数
 # =========================================================================
 def calc_rate_and_streaks(hit_list):
     n = len(hit_list)
@@ -413,7 +413,6 @@ if uploaded_file is not None:
         res_asym12, res_or, res_f4, res_blind12, res_kill15 = [], [], [], [], []
         res_seasons, res_elements, res_segments = [], [], []
 
-        # 杀肖模型 (新版平特全维能量流)
         res_zod_k2, res_zod_k3, res_zod_k4, res_zod_k5 = [], [], [], []
         res_num_k8, res_num_k10, res_num_k12 = [], [], []
         
@@ -432,7 +431,7 @@ if uploaded_file is not None:
         res_dist_k9 = []
         res_quad_k1 = []
         
-        # 平码战法
+        # 平码战法回测
         res_flat_k6 = []
         res_flat_k7 = []
         res_flat_zod_k2 = []
@@ -500,7 +499,7 @@ if uploaded_file is not None:
             sub_killed_head = (sub_prev_head - 2) % 5
 
             # 基础模块
-            f1_kill = set(n for n in range(1, 50) if not (sub_num_om[n] <= 25 or (26 <= sub_num_om[n] <= 50 and (sub_num_om[n] >= sub_num_last[n] or sub_num_rates[n] >= 0.40)) or (51 <= sub_num_om[n] <= 100 and num_omission[n] >= sub_num_last[n])))
+            f1_kill = set(n for n in range(1, 50) if not (sub_num_om[n] <= 25 or (26 <= sub_num_om[n] <= 50 and (sub_num_om[n] >= sub_num_last[n] or sub_num_rates[n] >= 0.40)) or (51 <= sub_num_om[n] <= 100 and num_omission[n] >= num_last_omission[n])))
             f1_kept = set(range(1, 50)) - f1_kill
             
             rec_tail_8 = defaultdict(int)
@@ -524,12 +523,13 @@ if uploaded_file is not None:
             off12 = 26 if prev_num <= 16 else (2 if prev_num <= 33 else 5)
             f6_kill = set([((prev_num + off12 + j - 1) % 49) + 1 for j in range(12)])
             f6_kept = set(range(1, 50)) - f6_kill
+            
+            # 👉 修复报错核心点：正确使用循环内部变量名 sub_tail_om 与 sub_tail_last
             f8_kill = set(n for n in range(1, 50) if (((sub_zod_rates[get_zodiac_of_number(n)]<0.4 and sub_zod_om[get_zodiac_of_number(n)]<sub_zod_last[get_zodiac_of_number(n)]) or (sub_tail_rates[n%10]<0.4 and sub_tail_om[n%10]<sub_tail_last[n%10])) and not (sub_zod_om[get_zodiac_of_number(n)]>=sub_zod_last[get_zodiac_of_number(n)] or sub_tail_om[n%10]>=sub_tail_last[n%10])))
             f9_kill = set([((prev_num + j - 1) % 49) + 1 for j in range(2, 14)])
-            f10_scores = {n: 0.35 * sub_zod_rates[get_zodiac_of_number(n)] + 0.35 * sub_tail_rates[n%10] + 0.30 * sub_num_rates[n] - (0.15 if sub_zod_om[get_zodiac_of_number(n)] < sub_zod_last[get_zodiac_of_number(n)] else 0) - (0.15 if sub_tail_om[n%10] < sub_tail_last[n%10] else 0) - (0.10 if num_omission[n] < num_last_omission[n] else 0) for n in range(1, 50)}
+            f10_scores = {n: 0.35 * sub_zod_rates[get_zodiac_of_number(n)] + 0.35 * sub_tail_rates[n%10] + 0.30 * sub_num_rates[n] - (0.15 if sub_zod_om[get_zodiac_of_number(n)] < sub_zod_last[get_zodiac_of_number(n)] else 0) - (0.15 if sub_tail_om[n%10] < sub_tail_last[n%10] else 0) - (0.10 if sub_num_om[n] < sub_num_last[n] else 0) for n in range(1, 50)}
             f10_kill = set(sorted(range(1, 50), key=lambda n: (f10_scores[n], n))[:15])
 
-            # 阶梯对冲排名
             tier_sc = {n: f5_scores[n] - (2.0 if n in f1_kill else 0) - (3.0 if n in f2_kill else 0) - (3.0 if n in f3_kill else 0) - (2.5 if n in f6_kill else 0) for n in range(1, 50)}
             ranked_tier = sorted(range(1, 50), key=lambda n: -tier_sc[n])
             for k_name, cfg in tier_configs.items():
@@ -540,15 +540,13 @@ if uploaded_file is not None:
                 is_h = n_num in (s20 | s10 | s5)
                 res_tier_records[k_name].append((is_h, n_num in s20, n_num in s10, n_num in s5))
 
-            # 留24码
-            p1_24 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(1.0 if n in f8_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24]
-            p2_24 = set(sorted(range(1, 50), key=lambda n: ((2.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24]
+            p1_24 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(1.0 if n in f8_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24])
+            p2_24 = set(sorted(range(1, 50), key=lambda n: ((2.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24])
             p3_24 = set(sorted(range(1, 50), key=lambda n: (1 if n in (f1_kill|f2_kill|f3_kill|f6_kill) else 0, -f5_scores[n]))[:24]
             res_hybrid1.append(n_num in p1_24)
             res_hybrid2.append(n_num in p2_24)
             res_hybrid3.append(n_num in p3_24)
 
-            # 精选30码
             p30_1 = set(sorted(range(1, 50), key=lambda n: ((2.0 if n in f1_kill else 0)+(3.0 if n in f2_kill else 0)+(2.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(1.0 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:30])
             p30_2 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(3.0 if n in f2_kill else 0)+(1.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(1.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0)-(1.0 if num_omission[n]>=num_last_omission[n] else 0), -f5_scores[n]))[:30])
             p30_3 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.0 if n in f2_kill else 0)+(1.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:30])
@@ -556,7 +554,6 @@ if uploaded_file is not None:
             res_pool30_2.append(n_num in p30_2)
             res_pool30_3.append(n_num in p30_3)
 
-            # 基础模块
             res_layers.append(n_num not in f1_kill)
             res_tail10.append(n_num not in f2_kill)
             res_asym10.append(n_num not in f3_kill)
@@ -614,7 +611,7 @@ if uploaded_file is not None:
             res_num_k10.append(n_num not in set(sorted_dead_nums[:10]))
             res_num_k12.append(n_num not in set(sorted_dead_nums[:12]))
 
-            # 🌟 1. 独立杀2码逻辑：【时空双核阻尼法】 (Code 1 = prev_num, Code 2 = 最死平码)
+            # 🌟 1. 独立杀2码逻辑【时空双核阻尼法】 (Code 1 = prev_num, Code 2 = 最死平码)
             sub_trans_num = defaultdict(int)
             for idx_h in range(h_len - 1):
                 if parsed_data[idx_h][0] == prev_num:
@@ -633,8 +630,7 @@ if uploaded_file is not None:
                 k2_dual_set = {prev_num, sorted_dead_nums[0] if sorted_dead_nums[0] != prev_num else sorted_dead_nums[1]}
             res_k2_dual.append(n_num not in k2_dual_set)
 
-            # 🌟 2. 独立杀5码逻辑：【五维正交代数晶格死锁法】 (纯代数几何碰撞，不依赖特码连庄)
-            # 模7
+            # 🌟 2. 独立杀5码逻辑【五维正交代数晶格死锁法】 (纯代数几何碰撞)
             sub_trans_m7 = defaultdict(int)
             for idx_h in range(h_len - 1):
                 if (parsed_data[idx_h][0] % 7) == (prev_num % 7):
@@ -648,7 +644,6 @@ if uploaded_file is not None:
             dead_m7_top1 = sorted(range(7), key=lambda m: (-sub_scores_m7[m], -sub_m7_om[m]))[0]
             dead_m7_nums_set = set(mod7_numbers[dead_m7_top1])
 
-            # 和数尾
             prev_cst_sub = (prev_num // 10 + prev_num % 10) % 10
             sub_trans_cst = defaultdict(int)
             for idx_h in range(h_len - 1):
@@ -663,7 +658,6 @@ if uploaded_file is not None:
             dead_cst_top2 = set(sorted(range(10), key=lambda c: (-sub_scores_cst[c], -sub_cst_om[c]))[:2])
             dead_cst_nums_set = set(n for c in dead_cst_top2 for n in cst_numbers[c])
 
-            # 晶格碰撞打分
             sub_scores_lat = {}
             for n in range(1, 50):
                 sc = 0.0
@@ -730,10 +724,8 @@ if uploaded_file is not None:
             res_hw_k1.append(n_num not in sub_k1_nums)
             res_hw_k2.append(n_num not in sub_k2_nums)
 
-            # 和数尾动力学
+            # 和数尾与模7
             res_cst_k2.append(n_num not in dead_cst_nums_set)
-
-            # 模7同余
             res_m7_k1.append(n_num not in dead_m7_nums_set)
             dead_m7_top2 = set(mod7_numbers[sorted(range(7), key=lambda m: (-sub_scores_m7[m], -sub_m7_om[m]))[0]] + mod7_numbers[sorted(range(7), key=lambda m: (-sub_scores_m7[m], -sub_m7_om[m]))[1]])
             res_m7_k2.append(n_num not in dead_m7_top2)
@@ -1047,7 +1039,7 @@ if uploaded_file is not None:
             curr_k2_dual_nums = sorted([curr_prev_num, curr_sorted_dead_nums[0] if curr_sorted_dead_nums[0] != curr_prev_num else curr_sorted_dead_nums[1]])
         curr_kept_k2_dual = sorted([n for n in range(1, 50) if n not in set(curr_k2_dual_nums)])
 
-        # 🌟 2. 独立杀5码逻辑【五维正交代数晶格死锁法】 (纯空间代数晶格死锁碰撞，不依赖特码连庄)
+        # 🌟 2. 独立杀5码逻辑【五维正交代数晶格死锁法】 (纯代数几何碰撞)
         curr_trans_m7 = defaultdict(int)
         for idx_h in range(len(parsed_data) - 1):
             if (parsed_data[idx_h][0] % 7) == (curr_prev_num % 7):
@@ -1102,7 +1094,7 @@ if uploaded_file is not None:
         for d in range(1, 10):
             s = 0.0
             if d == curr_prev_dr: s += 3.0
-            s += curr_rec5_dr[d] * 1.0
+            s += rec5_dr[d] * 1.0
             if curr_dr_trans[d] == 0: s += 3.5
             elif curr_dr_trans[d] == 1: s += 1.4
             if curr_dr_om[d] < curr_dr_last[d] and curr_dr_om[d] >= 3: s += 1.0
@@ -1141,6 +1133,64 @@ if uploaded_file is not None:
         curr_k2_hw_nums = sorted([n for hw in curr_ranked_hw[:2] for n in hw_numbers[hw]])
         curr_kept_k1_hw = sorted([n for n in range(1, 50) if n not in curr_k1_hw_nums])
         curr_kept_k2_hw = sorted([n for n in range(1, 50) if n not in curr_k2_hw_nums])
+
+        # 和数尾与模7当前候选集
+        curr_killed_cst_nums = sorted(list(dead_cst_nums_curr))
+        curr_kept_cst_nums = sorted([n for n in range(1, 50) if n not in dead_cst_nums_curr])
+        curr_killed_m7_k1_nums = sorted(list(dead_m7_nums_curr))
+        curr_kept_m7_k1_nums = sorted([n for n in range(1, 50) if n not in dead_m7_nums_curr])
+        dead_m7_2_curr = set(mod7_numbers[sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[0]] + mod7_numbers[sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[1]])
+        curr_killed_m7_k2_nums = sorted(list(dead_m7_2_curr))
+        curr_kept_m7_k2_nums = sorted([n for n in range(1, 50) if n not in dead_m7_2_curr])
+
+        # 五门头数当前候选集
+        sub_head_trans_curr = defaultdict(int)
+        for idx_h in range(len(parsed_data) - 1):
+            if (parsed_data[idx_h][0] // 10) == curr_prev_head: sub_head_trans_curr[parsed_data[idx_h+1][0] // 10] += 1
+        sub_head_idx_curr = defaultdict(list)
+        for idx_h, x in enumerate(parsed_data): sub_head_idx_curr[x[0] // 10].append(idx_h)
+        sub_head_om_curr = {h: (total_records - 1 - sub_head_idx_curr[h][-1]) if sub_head_idx_curr[h] else total_records for h in range(5)}
+        sub_head_last_curr = {h: (sub_head_idx_curr[h][-1] - sub_head_idx_curr[h][-2] - 1) if len(sub_head_idx_curr[h]) >= 2 else (sub_head_idx_curr[h][-1] if sub_head_idx_curr[h] else 0) for h in range(5)}
+        sub_rec5_head_curr = Counter(x[0] // 10 for x in parsed_data[-5:])
+        sub_scores_head_curr = {h: (8.0 - sub_head_trans_curr[h])*1.0 + (1.5 if sub_head_om_curr[h] < sub_head_last_curr[h] and sub_head_om_curr[h] >= 2 else (-2.0 if sub_head_om_curr[h] >= sub_head_last_curr[h] and sub_head_om_curr[h] >= 2 else 0)) + sub_rec5_head_curr[h]*1.2 for h in range(5)}
+        curr_ranked_head = sorted(range(5), key=lambda h: (-sub_scores_head_curr[h], -sub_head_om_curr[h]))
+        curr_killed_head_nums = sorted(head_numbers[curr_ranked_head[0]])
+        curr_kept_head_nums = sorted([n for n in range(1, 50) if n not in set(curr_killed_head_nums)])
+
+        # 步长动能微扰排斥当前候选集
+        dist_counts_curr = defaultdict(int)
+        from_pn_dists_curr = defaultdict(int)
+        for idx_h in range(1, total_records):
+            a = parsed_data[idx_h-1][0]
+            b = parsed_data[idx_h][0]
+            d = min((a - b) % 49, (b - a) % 49)
+            dist_counts_curr[d] += 1
+            if a == curr_prev_num: from_pn_dists_curr[d] += 1
+        dist_scores_curr = {d: (15.0 - dist_counts_curr[d])*0.5 + (2.0 if from_pn_dists_curr[d] == 0 else 0) for d in range(25)}
+        dist_scores_curr[0] += 5.0
+        curr_ranked_dists = sorted(range(25), key=lambda d: -dist_scores_curr[d])
+        curr_killed_dist9_nums_set = set()
+        for d in curr_ranked_dists[:5]:
+            if d == 0: curr_killed_dist9_nums_set.add(curr_prev_num)
+            else:
+                curr_killed_dist9_nums_set.add(((curr_prev_num - 1 + d) % 49) + 1)
+                curr_killed_dist9_nums_set.add(((curr_prev_num - 1 - d) % 49) + 1)
+        curr_killed_dist9_nums = sorted(list(curr_killed_dist9_nums_set))
+        curr_kept_dist9_nums = sorted([n for n in range(1, 50) if n not in curr_killed_dist9_nums_set])
+
+        # 四象限时空动力学当前候选集
+        sub_trans_q_curr = defaultdict(int)
+        for idx_h in range(len(parsed_data) - 1):
+            if get_quad(parsed_data[idx_h][0]) == curr_prev_q: sub_trans_q_curr[get_quad(parsed_data[idx_h+1][0])] += 1
+        sub_q_idx_curr = defaultdict(list)
+        for idx_h, x in enumerate(parsed_data): sub_q_idx_curr[get_quad(x[0])].append(idx_h)
+        sub_q_om_curr = {q: (total_records - 1 - sub_q_idx_curr[q][-1]) if sub_q_idx_curr[q] else total_records for q in all_quads}
+        sub_q_last_curr = {q: (sub_q_idx_curr[q][-1] - sub_q_idx_curr[q][-2] - 1) if len(sub_q_idx_curr[q]) >= 2 else (sub_q_idx_curr[q][-1] if sub_q_idx_curr[q] else 0) for q in all_quads}
+        sub_rec5_q_curr = Counter(get_quad(x[0]) for x in parsed_data[-5:])
+        sub_scores_q_curr = {q: (15.0 - sub_trans_q_curr[q])*1.0 + (1.5 if sub_q_om_curr[q] < sub_q_last_curr[q] and sub_q_om_curr[q] >= 2 else (-2.0 if sub_q_om_curr[q] >= sub_q_last_curr[q] and sub_q_om_curr[q] >= 2 else 0)) + sub_rec5_q_curr[q]*1.2 for q in all_quads}
+        curr_ranked_q = sorted(all_quads, key=lambda q: (-sub_scores_q_curr[q], -sub_q_om_curr[q]))
+        curr_killed_quad_nums = sorted(quad_numbers[curr_ranked_q[0]])
+        curr_kept_quad_nums = sorted([n for n in range(1, 50) if n not in set(curr_killed_quad_nums)])
 
         # 平码 6 套新战法当期计算
         if has_flat_data and curr_prev_flats:
@@ -1194,7 +1244,7 @@ if uploaded_file is not None:
             "🛡️ 时空双核·杀2码 (留47码)": {
                 "hist": res_k2_dual,
                 "curr_kept": set(curr_kept_k2_dual),
-                "desc": "上期特码连庄衰竭+上期平码零频落特死核，近14天 100%，近30天 100%，全量 98.6%"
+                "desc": "上期特码连庄阻尼+上期平码零频落特死核，近14天 100%，近30天 100%，全量 98.6%"
             },
             "🛡️ 代数晶格死锁·杀5码 (留44码)": {
                 "hist": res_k5_lattice,
@@ -1223,32 +1273,32 @@ if uploaded_file is not None:
             },
             "🔢 和数尾动力学·杀2合尾 (留约39码)": {
                 "hist": res_cst_k2,
-                "curr_kept": set(curr_kept_cst_nums if 'curr_kept_cst_nums' in locals() else range(1, 50)),
+                "curr_kept": set(curr_kept_cst_nums),
                 "desc": "各位数字和模10动力学，整杀2个高危合尾(约10码)，近30天 93.3%，7天 100%"
             },
             "📐 模7同余动力学·杀1余数类 (留42码)": {
                 "hist": res_m7_k1,
-                "curr_kept": set(curr_kept_m7_k1_nums if 'curr_kept_m7_k1_nums' in locals() else range(1, 50)),
+                "curr_kept": set(curr_kept_m7_k1_nums),
                 "desc": "模7严格同余格点模型，整杀1个高危余数类(严格7码)，近14天 100%，近30天 93.3%"
             },
             "📐 模7同余动力学·杀2余数类 (留35码)": {
                 "hist": res_m7_k2,
-                "curr_kept": set(curr_kept_m7_k2_nums if 'curr_kept_m7_k2_nums' in locals() else range(1, 50)),
+                "curr_kept": set(curr_kept_m7_k2_nums),
                 "desc": "整杀2个模7余数类(严格14码)，近14天 100%，近30天 80.0%"
             },
             "🚪 五门头数动力学·杀1门 (留约39码)": {
                 "hist": res_head_k1,
-                "curr_kept": set(curr_kept_head_nums if 'curr_kept_head_nums' in locals() else range(1, 50)),
+                "curr_kept": set(curr_kept_head_nums),
                 "desc": "十位高位门数跃迁排斥，整杀1个高危门数(约10码)，近30天 83.3%"
             },
             "⚡ 步长动能微扰排斥·杀9码 (留40码)": {
                 "hist": res_dist_k9,
-                "curr_kept": set(curr_kept_dist9_nums if 'curr_kept_dist9_nums' in locals() else range(1, 50)),
+                "curr_kept": set(curr_kept_dist9_nums),
                 "desc": "环形相空间跳步极低动能禁区，精准剔除9个物理死码，全量 83.0%"
             },
             "🎯 四象限时空动力学·杀1象限 (留约37码)": {
                 "hist": res_quad_k1,
-                "curr_kept": set(curr_kept_quad_nums if 'curr_kept_quad_nums' in locals() else range(1, 50)),
+                "curr_kept": set(curr_kept_quad_nums),
                 "desc": "大小×单双2D时空相平面，整杀1个阻尼象限(约12~13码)，近14天 100%"
             },
             "🌈 半波动力学·杀1半波 (留约41码)": {
@@ -1999,14 +2049,14 @@ if uploaded_file is not None:
         # ==========================================
         elif selected_func.startswith("🔢 7."):
             st.subheader("🔢 和数尾动力学·各位和整杀 2 合尾（各位数字和模10 ｜ 胜率 93.3%）")
-            render_kpi_header(stats_cst, f"杀 2 合尾 (留39码)")
+            render_kpi_header(stats_cst, f"杀 {len(curr_killed_cst_nums)} 码 (2合尾)")
 
-            st.error(f"🚫 **【本期和数尾动力学锁杀的 2 个合尾】：** `{dead_cst_top2_curr}` (涵盖 10 码)")
-            st.code(", ".join([f"{x:02d}" for x in sorted(list(dead_cst_nums_curr))]), language="text")
-            st.success(f"🏆 **【本期和数尾精选保留 39 码大底池】（点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(list(set(range(1, 50)) - dead_cst_nums_curr))]), language="text")
+            st.error(f"🚫 **【本期和数尾动力学锁杀的 2 个合尾】：** `{curr_killed_cst_nums[:2]}` (涵盖 10 码)")
+            st.code(", ".join([f"{x:02d}" for x in curr_killed_cst_nums]), language="text")
+            st.success(f"🏆 **【本期和数尾精选保留 39 码大底池】（共 {len(curr_kept_cst_nums)} 码 ｜ 点击右上角复制）：**")
+            st.code(", ".join([f"{x:02d}" for x in curr_kept_cst_nums]), language="text")
 
-            render_financial_calculator_and_streaks(stats_cst, len(set(range(1, 50)) - dead_cst_nums_curr), key_prefix="mod_cst")
+            render_financial_calculator_and_streaks(stats_cst, len(curr_kept_cst_nums), key_prefix="mod_cst")
 
         # ==========================================
         # 模块 8: 📐 模7同余动力学·严格杀1/2余数类
@@ -2020,14 +2070,13 @@ if uploaded_file is not None:
 
             if "杀 1 个" in m7_choice:
                 st_m7 = stats_m7_k1
-                killed_m7_nums = sorted(list(dead_m7_nums_curr))
-                kept_m7_nums = sorted([n for n in range(1, 50) if n not in dead_m7_nums_curr])
-                k_info = f"余数 {dead_m7_top1_curr}"
+                killed_m7_nums = curr_killed_m7_k1_nums
+                kept_m7_nums = curr_kept_m7_k1_nums
+                k_info = f"余数 {curr_killed_m7_k1_nums[0] % 7}"
             else:
                 st_m7 = stats_m7_k2
-                dead_m7_2_curr = set(mod7_numbers[sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[0]] + mod7_numbers[sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[1]])
-                killed_m7_nums = sorted(list(dead_m7_2_curr))
-                kept_m7_nums = sorted([n for n in range(1, 50) if n not in dead_m7_2_curr])
+                killed_m7_nums = curr_killed_m7_k2_nums
+                kept_m7_nums = curr_kept_m7_k2_nums
                 k_info = f"前 2 个余数类"
 
             render_kpi_header(st_m7, f"严格杀 {len(killed_m7_nums)} 码")
@@ -2044,11 +2093,12 @@ if uploaded_file is not None:
         # ==========================================
         elif selected_func.startswith("🚪 9."):
             st.subheader("🚪 五门头数动力学·十位区间整杀 1 门（高位门数跃迁排斥模型）")
-            render_kpi_header(stats_head, f"留 39 码")
-            dead_head_nums = head_numbers[sub_ranked_head[0] if 'sub_ranked_head' in locals() else 0]
-            st.error(f"🚫 **【本期五门动力学锁定整杀的门数】：** (涵盖 10 码)")
-            st.code(", ".join([f"{x:02d}" for x in dead_head_nums]), language="text")
-            render_financial_calculator_and_streaks(stats_head, 39, key_prefix="mod_head")
+            render_kpi_header(stats_head, f"杀 1 门 (留39码)")
+            st.error(f"🚫 **【本期五门动力学锁定整杀的门数】：** `{curr_killed_head_nums[0]//10} 头` (涵盖 {len(curr_killed_head_nums)} 码)")
+            st.code(", ".join([f"{x:02d}" for x in curr_killed_head_nums]), language="text")
+            st.success(f"🏆 **【本期五门精选保留 39 码大底池】（共 {len(curr_kept_head_nums)} 码 ｜ 点击右上角复制）：**")
+            st.code(", ".join([f"{x:02d}" for x in curr_kept_head_nums]), language="text")
+            render_financial_calculator_and_streaks(stats_head, len(curr_kept_head_nums), key_prefix="mod_head")
 
         # ==========================================
         # 模块 10: ⚡ 相空间步长动能·环形微扰杀9码
@@ -2057,17 +2107,21 @@ if uploaded_file is not None:
             st.subheader("⚡ 相空间步长动能微扰排斥·杀 9 码（环形最短跳步距离动能禁区）")
             render_kpi_header(stats_dist, f"杀 9 物理死码")
             st.error(f"🚫 **【本期步长动能微扰锁杀的 9 个物理死码】：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(list(curr_killed_dist9_nums))]), language="text")
-            render_financial_calculator_and_streaks(stats_dist, 40, key_prefix="mod_dist")
+            st.code(", ".join([f"{x:02d}" for x in curr_killed_dist9_nums]), language="text")
+            st.success(f"🏆 **【本期步长动能保留 40 码大底池】（共 {len(curr_kept_dist9_nums)} 码 ｜ 点击右上角复制）：**")
+            st.code(", ".join([f"{x:02d}" for x in curr_kept_dist9_nums]), language="text")
+            render_financial_calculator_and_streaks(stats_dist, len(curr_kept_dist9_nums), key_prefix="mod_dist")
 
         # ==========================================
         # 模块 11: 🎯 四象限时空动力学·大小单双杀1象限
         # ==========================================
         elif selected_func.startswith("🎯 11."):
             st.subheader("🎯 四象限时空动力学·大小单双杀 1 象限（大小×单双 2D 平面阻尼模型）")
-            render_kpi_header(stats_quad, f"杀 1 象限 (留37码)")
-            st.error(f"🚫 **【本期四象限动力学锁定杀掉的象限】：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(list(curr_killed_quad_nums))]), language="text")
+            render_kpi_header(stats_quad, f"杀 1 象限 ({len(curr_killed_quad_nums)} 码)")
+            st.error(f"🚫 **【本期四象限动力学锁定杀掉的象限】：** `{curr_ranked_q[0]}` (涵盖 {len(curr_killed_quad_nums)} 码)")
+            st.code(", ".join([f"{x:02d}" for x in curr_killed_quad_nums]), language="text")
+            st.success(f"🏆 **【本期四象限精选保留大底池】（共 {len(curr_kept_quad_nums)} 码 ｜ 点击右上角复制）：**")
+            st.code(", ".join([f"{x:02d}" for x in curr_kept_quad_nums]), language="text")
             render_financial_calculator_and_streaks(stats_quad, len(curr_kept_quad_nums), key_prefix="mod_quad")
 
         # ==========================================
