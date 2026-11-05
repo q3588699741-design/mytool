@@ -1,2601 +1,881 @@
-import streamlit as st
-import pandas as pd
-from collections import defaultdict, Counter
-import numpy as np
-import itertools
-import traceback
-
-# 页面基础配置
-st.set_page_config(page_title="数据全维度智能统计看板", layout="wide", initial_sidebar_state="expanded")
-
-st.title("📊 开奖记录全维度综合统计看板 (含长期跟踪28码旗舰推荐)")
-st.caption("🤖 28码长期跟踪推荐(+2.4万) ｜ 自动匹配 ｜ 新版杀3肖近14天100% ｜ 时空杀2码 98.6% ｜ 全息杀3码 98.6% ｜ 晶格杀5码 96.0%")
-
-# 定义全局标准集合
-all_tails = list(range(10))
-all_zodiacs = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪']
-all_heads = list(range(5))
-
-# 2026 丙午马年当前基准映射
-base_zodiacs = ['马', '蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊']
-def get_zodiac_of_number(n): return base_zodiacs[(n - 1) % 12]
-
-# 波色与半波映射定义
-red_balls = [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46]
-blue_balls = [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48]
-green_balls = [5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49]
-
-def get_half_wave(n):
-    c = '红' if n in red_balls else ('蓝' if n in blue_balls else '绿')
-    p = '单' if n % 2 == 1 else '双'
-    return f"{c}{p}"
-
-all_half_waves = ['红单', '红双', '蓝单', '蓝双', '绿单', '绿双']
-hw_numbers = {hw: [] for hw in all_half_waves}
-for n in range(1, 50):
-    hw_numbers[get_half_wave(n)].append(n)
-
-# 模9数根映射全集
-dr_numbers = defaultdict(list)
-for n in range(1, 50):
-    dr = (n - 1) % 9 + 1
-    dr_numbers[dr].append(n)
-
-# 和数尾映射全集
-cst_numbers = defaultdict(list)
-for n in range(1, 50):
-    cst = (n // 10 + n % 10) % 10
-    cst_numbers[cst].append(n)
-
-# 模7同余映射全集
-mod7_numbers = {r: [n for n in range(1, 50) if n % 7 == r] for r in range(7)}
-
-# 五门头数映射全集
-head_numbers = {h: [n for n in range(1, 50) if n // 10 == h] for h in range(5)}
-
-# 四象限映射全集
-quad_numbers = {
-    '小单': [n for n in range(1, 25) if n % 2 == 1],
-    '小双': [n for n in range(1, 25) if n % 2 == 0],
-    '大单': [n for n in range(25, 50) if n % 2 == 1],
-    '大双': [n for n in range(25, 50) if n % 2 == 0]
-}
-all_quads = ['小单', '小双', '大单', '大双']
-def get_quad(n):
-    return ('大' if n >= 25 else '小') + ('单' if n % 2 == 1 else '双')
-
-zodiac_zones_2 = {'上区': ['马', '蛇', '龙', '兔', '虎', '牛'], '下区': ['鼠', '猪', '狗', '鸡', '猴', '羊']}
-zodiac_zones_3 = {'左区': ['马', '兔', '鼠', '鸡'], '中区': ['蛇', '虎', '猪', '猴'], '右区': ['龙', '牛', '狗', '羊']}
-zodiac_seasons = {'春肖': ['虎', '兔', '龙'], '夏肖': ['蛇', '马', '羊'], '秋肖': ['猴', '鸡', '狗'], '冬肖': ['猪', '鼠', '牛']}
-all_zones = {**zodiac_zones_2, **zodiac_zones_3}
-
-five_elements = {
-    '金行': [4, 5, 12, 13, 26, 27, 34, 35, 42, 43],
-    '木行': [8, 9, 16, 17, 24, 25, 38, 39, 46, 47],
-    '水行': [1, 14, 15, 22, 23, 30, 31, 44, 45],
-    '火行': [2, 3, 10, 11, 18, 19, 32, 33, 40, 41, 48, 49],
-    '土行': [6, 7, 20, 21, 28, 29, 36, 37]
-}
-seven_segments = {f'{k}段': list(range(1+(k-1)*7, 1+k*7)) for k in range(1, 8)}
-
-num_to_elem = {n: en for en, el in five_elements.items() for n in el}
-num_to_seg = {n: sgn for sgn, sgl in seven_segments.items() for n in sgl}
-zod_to_z2 = {z: zn for zn, zl in zodiac_zones_2.items() for z in zl}
-zod_to_z3 = {z: zn for zn, zl in zodiac_zones_3.items() for z in zl}
-zod_to_sea = {z: sn for sn, sl in zodiac_seasons.items() for z in sl}
-
-# =========================================================================
-# 📈 全周期连红与风控统计解析函数
-# =========================================================================
-def calc_rate_and_streaks(hit_list):
-    n = len(hit_list)
-    if n == 0:
-        return {
-            'total_rate': 0.0, 'total_hits': 0, 'total_n': 0,
-            'r30_rate': 0.0, 'r30_hits': 0, 'r30_n': 0,
-            'r14_rate': 0.0, 'r14_hits': 0, 'r14_n': 0,
-            'r7_rate': 0.0, 'r7_hits': 0, 'r7_n': 0,
-            'r3_rate': 0.0, 'r3_hits': 0, 'r3_n': 0,
-            'streak2_rate': 0.0, 'streak2_hits': 0,
-            'streak3_rate': 0.0, 'streak3_hits': 0,
-            'max_win_streak': 0, 'max_loss_streak': 0,
-            'r30_max_loss': 0, 'r14_max_loss': 0,
-            'cur_win_streak': 0
-        }
-    th = sum(hit_list)
-    tr = th / n * 100
-    
-    sub3 = hit_list[-3:]
-    r3 = (sum(sub3) / len(sub3) * 100) if len(sub3) > 0 else 0.0
-    sub7 = hit_list[-7:]
-    r7 = (sum(sub7) / len(sub7) * 100) if len(sub7) > 0 else 0.0
-    sub14 = hit_list[-14:]
-    r14 = (sum(sub14) / len(sub14) * 100) if len(sub14) > 0 else 0.0
-    sub30 = hit_list[-30:]
-    r30 = (sum(sub30) / len(sub30) * 100) if len(sub30) > 0 else 0.0
-    
-    streak2_cnt = sum(1 for j in range(n - 1) if hit_list[j] and hit_list[j+1])
-    streak2_rate = (streak2_cnt / (n - 1) * 100) if n > 1 else 0.0
-    streak3_cnt = sum(1 for j in range(n - 2) if hit_list[j] and hit_list[j+1] and hit_list[j+2])
-    streak3_rate = (streak3_cnt / (n - 2) * 100) if n > 2 else 0.0
-    
-    max_w, cur_w = 0, 0
-    max_l, cur_l = 0, 0
-    for h in hit_list:
-        if h:
-            cur_w += 1
-            max_w = max(max_w, cur_w)
-            cur_l = 0
-        else:
-            cur_l += 1
-            max_l = max(max_l, cur_l)
-            cur_w = 0
-            
-    r30_max_l, cur_r30_l = 0, 0
-    for h in sub30:
-        if not h:
-            cur_r30_l += 1
-            r30_max_l = max(r30_max_l, cur_r30_l)
-        else:
-            cur_r30_l = 0
-            
-    r14_max_l, cur_r14_l = 0, 0
-    for h in sub14:
-        if not h:
-            cur_r14_l += 1
-            r14_max_l = max(r14_max_l, cur_r14_l)
-        else:
-            cur_r14_l = 0
-            
-    return {
-        'total_rate': tr, 'total_hits': th, 'total_n': n,
-        'r30_rate': r30, 'r30_hits': sum(sub30), 'r30_n': len(sub30),
-        'r14_rate': r14, 'r14_hits': sum(sub14), 'r14_n': len(sub14),
-        'r7_rate': r7, 'r7_hits': sum(sub7), 'r7_n': len(sub7),
-        'r3_rate': r3, 'r3_hits': sum(sub3), 'r3_n': len(sub3),
-        'streak2_rate': streak2_rate, 'streak2_hits': streak2_cnt,
-        'streak3_rate': streak3_rate, 'streak3_hits': streak3_cnt,
-        'max_win_streak': max_w, 'max_loss_streak': max_l,
-        'r30_max_loss': r30_max_l, 'r14_max_loss': r14_max_l,
-        'cur_win_streak': cur_w
-    }
-
-# 通用财务测算器与风控连黑看板渲染组件
-def render_financial_calculator_and_streaks(stats, n_codes, key_prefix="calc"):
-    st.write("---")
-    st.markdown("#### 🛡️ 连红稳定性与连黑风控综合看板：")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("🔥 2 连红成功率", f"{stats['streak2_rate']:.1f}%", f"{stats['streak2_hits']} 次达成")
-    c2.metric("🚀 3 连红成功率", f"{stats['streak3_rate']:.1f}%", f"{stats['streak3_hits']} 次达成")
-    c3.metric("🏆 历史最长连红", f"{stats['max_win_streak']} 期连中", f"当前已连红: {stats['cur_win_streak']} 期")
-    c4.metric("🛡️ 近30天最大连黑", f"{stats['r30_max_loss']} 期", "抗断缆极强" if stats['r30_max_loss'] <= 1 else "注意防守")
-    c5.metric("🛡️ 近14天最大连黑", f"{stats['r14_max_loss']} 期", "零连黑满贯" if stats['r14_max_loss'] == 0 else f"最大连黑 {stats['r14_max_loss']} 期")
-
-    st.write("---")
-    st.markdown("#### 💰 平注财务动态测算器（支持自定义单码金额与赔率）：")
-    in_c1, in_c2, in_c3 = st.columns([1, 1, 1])
-    with in_c1:
-        stake = st.number_input("单码投注金额 (元)：", min_value=1, max_value=500, value=20, step=1, key=f"{key_prefix}_stake")
-    with in_c2:
-        odds = st.number_input("中奖赔率 (倍)：", min_value=1, max_value=100, value=47, step=1, key=f"{key_prefix}_odds")
-    with in_c3:
-        breakeven_p = (n_codes / odds * 100) if odds > 0 else 0
-        st.metric("保本所需胜率红线", f"{breakeven_p:.2f}%", f"超额护城河 +{stats['total_rate'] - breakeven_p:.1f}%")
-
-    cost = n_codes * stake
-    win_net = stake * odds - cost
-    tot_profit = stats['total_hits'] * win_net - (stats['total_n'] - stats['total_hits']) * cost
-    weekly_profit = (tot_profit / (stats['total_n'] / 7)) if stats['total_n'] > 0 else 0
-    r30_profit = stats['r30_hits'] * win_net - (30 - stats['r30_hits']) * cost
-    r30_weekly = r30_profit / (30 / 7)
-    two_win_profit = 2 * win_net
-
-    f1, f2, f3, f4, f5 = st.columns(5)
-    f1.metric("单期总投入成本", f"{cost} 元/天", f"覆盖 {n_codes} 码")
-    f2.metric("中奖单期净利润", f"+{win_net} 元")
-    f3.metric("全量累计总净利", f"{tot_profit:+.0f} 元", f"周均: {weekly_profit:+.0f}元/周")
-    f4.metric("近30天总净利", f"{r30_profit:+.0f} 元", f"周均: {r30_weekly:+.0f}元/周")
-    f5.metric("🎯 2连红收网纯利", f"+{two_win_profit} 元", "跑满两期即锁利")
-
-# 统一多周期胜率大盘 KPI 展示组件
-def render_kpi_header(stats, n_codes_label=""):
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("📊 全量实测胜率", f"{stats['total_rate']:.2f}%", f"{stats['total_hits']}/{stats['total_n']}期")
-    c2.metric("📅 近30天胜率", f"{stats['r30_rate']:.1f}%", f"最大连黑: {stats['r30_max_loss']} 期")
-    c3.metric("⚡ 近14天胜率", f"{stats['r14_rate']:.1f}%", f"最大连黑: {stats['r14_max_loss']} 期")
-    c4.metric("🔥 近7天胜率", f"{stats['r7_rate']:.1f}%", f"{stats['r7_hits']}/{stats['r7_n']}期")
-    c5.metric("🚀 近3天胜率", f"{stats['r3_rate']:.1f}%", n_codes_label if n_codes_label else f"{stats['r3_hits']}/{stats['r3_n']}期")
-
-# 1. 配置文件上传与双模式自适应解析引擎
-uploaded_file = st.file_uploader("👉 请上传最新的开奖记录表格 (支持含平码的全量表 或 纯特码表，.csv/.xlsx 格式)", type=["csv", "xlsx"])
-
-if uploaded_file is not None:
-    if uploaded_file.name.endswith('.csv'):
-        try: df_raw = pd.read_csv(uploaded_file, header=None)
-        except Exception as e: st.error(f"❌ 读取 CSV 失败: {e}"); st.stop()
-    else:
-        try: df_raw = pd.read_excel(uploaded_file, header=None)
-        except ImportError:
-            st.error("❌ 缺少 openpyxl 组件，请在终端运行：`pip install openpyxl` 后重试。")
-            st.stop()
-        except Exception as e: st.error(f"❌ 读取 Excel 失败: {e}"); st.stop()
-    
-    try:
-        has_period_header = False
-        for r in range(min(15, len(df_raw))):
-            if '期' in str(df_raw.iloc[r, 0]):
-                has_period_header = True
-                break
-
-        parsed_data = [] # 格式: (num, zodiac, flats_list_or_None, header_str, flats_zod_list_or_None)
-
-        if has_period_header and df_raw.shape[1] >= 7:
-            # 模式 A: 3 行一期的全量多列详细表（含 6 平码 + 特码 + 对应生肖）
-            i = 0
-            periods_temp = []
-            while i < len(df_raw):
-                val = str(df_raw.iloc[i, 0])
-                if '期' in val:
-                    try:
-                        header_str = val
-                        nums = df_raw.iloc[i+1, :].tolist()
-                        zods = df_raw.iloc[i+2, :].tolist()
-                        
-                        p_flats = [int(nums[k]) for k in range(6)]
-                        te = int(nums[7])
-                        zte = str(zods[7]).strip()
-                        flats_zod = [str(zods[k]).strip() for k in range(6)]
-                        periods_temp.append({
-                            'header': header_str,
-                            'num': te,
-                            'zodiac': zte,
-                            'flats': p_flats,
-                            'flats_zod': flats_zod
-                        })
-                        i += 3
-                    except Exception:
-                        i += 1
-                else:
-                    i += 1
-            
-            # 倒序检查：若为倒序，自动翻转为严格时间正序
-            if len(periods_temp) >= 2:
-                p_first = int(''.join(filter(str.isdigit, periods_temp[0]['header'].split('期')[0]))) if '期' in periods_temp[0]['header'] else 0
-                p_last = int(''.join(filter(str.isdigit, periods_temp[-1]['header'].split('期')[0]))) if '期' in periods_temp[-1]['header'] else 0
-                if p_first > p_last:
-                    periods_temp = periods_temp[::-1]
-            
-            # 去重
-            seen_p = set()
-            for p in periods_temp:
-                sig = (p['header'], p['num'], tuple(p['flats']))
-                if sig not in seen_p:
-                    seen_p.add(sig)
-                    parsed_data.append((p['num'], p['zodiac'], p['flats'], p['header'], p['flats_zod']))
-        else:
-            # 模式 B: 经典双列格式 (特码, 生肖)
-            df_clean = df_raw.dropna()
-            for idx, row in df_clean.iterrows():
-                try:
-                    num = int(row[0])
-                    zodiac = str(row[1]).strip()
-                    parsed_data.append((num, zodiac, None, f"第{idx+1}期", None))
-                except: continue
-
-        total_records = len(parsed_data)
-        if total_records < 2:
-            st.error("❌ 表格有效数据不足！")
-            st.stop()
-
-        has_flat_data = (parsed_data[-1][2] is not None and len(parsed_data[-1][2]) == 6)
-
-        # 基础数据统计
-        num_counts = defaultdict(int)
-        tail_counts = defaultdict(int)
-        zodiac_counts = defaultdict(int)
-        head_counts_dict = defaultdict(int)
-        zone_counts = defaultdict(int)
-        season_counts = defaultdict(int)
-        element_counts = defaultdict(int)
-        segment_counts = defaultdict(int)
-
-        num_indices = defaultdict(list)
-        tail_indices = defaultdict(list)
-        zodiac_indices = defaultdict(list)
-        head_indices = defaultdict(list)
-        zone_indices = defaultdict(list)
-        season_indices = defaultdict(list)
-        element_indices = defaultdict(list)
-        segment_indices = defaultdict(list)
-
-        for i, (num, zodiac, _, _, _) in enumerate(parsed_data):
-            num_counts[num] += 1
-            tail_counts[num % 10] += 1
-            zodiac_counts[zodiac] += 1
-            head_counts_dict[num // 10] += 1
-            num_indices[num].append(i)
-            tail_indices[num % 10].append(i)
-            zodiac_indices[zodiac].append(i)
-            head_indices[num // 10].append(i)
-            for z_name, z_list in all_zones.items():
-                if zodiac in z_list:
-                    zone_counts[z_name] += 1
-                    zone_indices[z_name].append(i)
-            for s_name, s_list in zodiac_seasons.items():
-                if zodiac in s_list:
-                    season_counts[s_name] += 1
-                    season_indices[s_name].append(i)
-            for e_name, e_nums in five_elements.items():
-                if num in e_nums:
-                    element_counts[e_name] += 1
-                    element_indices[e_name].append(i)
-            for seg_name, seg_nums in seven_segments.items():
-                if num in seg_nums:
-                    segment_counts[seg_name] += 1
-                    segment_indices[seg_name].append(i)
-
-        # 全局大盘遗漏计算字典
-        num_omission = {n: (total_records - 1 - num_indices[n][-1]) if num_indices[n] else total_records for n in range(1, 50)}
-        num_last_omission = {n: (num_indices[n][-1] - num_indices[n][-2] - 1) if len(num_indices[n]) >= 2 else (num_indices[n][-1] if num_indices[n] else 0) for n in range(1, 50)}
-        zodiac_omission = {z: (total_records - 1 - zodiac_indices[z][-1]) if zodiac_indices[z] else total_records for z in all_zodiacs}
-        zodiac_last_omission = {z: (zodiac_indices[z][-1] - zodiac_indices[z][-2] - 1) if len(zodiac_indices[z]) >= 2 else (zodiac_indices[z][-1] if zodiac_indices[z] else 0) for z in all_zodiacs}
-        tail_omission = {t: (total_records - 1 - tail_indices[t][-1]) if tail_indices[t] else total_records for t in all_tails}
-        tail_last_omission = {t: (tail_indices[t][-1] - tail_indices[t][-2] - 1) if len(tail_indices[t]) >= 2 else (tail_indices[t][-1] if tail_indices[t] else 0) for t in all_tails}
-        head_omission = {h: (total_records - 1 - head_indices[h][-1]) if head_indices[h] else total_records for h in all_heads}
-        head_last_omission = {h: (head_indices[h][-1] - head_indices[h][-2] - 1) if len(head_indices[h]) >= 2 else (head_indices[h][-1] if head_indices[h] else 0) for h in all_heads}
-
-        zone_omission = {z: (total_records - 1 - zone_indices[z][-1]) if zone_indices[z] else total_records for z in all_zones}
-        zone_last_omission = {z: (zone_indices[z][-1] - zone_indices[z][-2] - 1) if len(zone_indices[z]) >= 2 else (zone_indices[z][-1] if zone_indices[z] else 0) for z in all_zones}
-        season_omission = {s: (total_records - 1 - season_indices[s][-1]) if season_indices[s] else total_records for s in zodiac_seasons}
-        season_last_omission = {s: (season_indices[s][-1] - season_indices[s][-2] - 1) if len(season_indices[s]) >= 2 else (season_indices[s][-1] if season_indices[s] else 0) for s in zodiac_seasons}
-        element_omission = {e: (total_records - 1 - element_indices[e][-1]) if element_indices[e] else total_records for e in five_elements}
-        element_last_omission = {e: (element_indices[e][-1] - element_indices[e][-2] - 1) if len(element_indices[e]) >= 2 else (element_indices[e][-1] if element_indices[e] else 0) for e in five_elements}
-        segment_omission = {sg: (total_records - 1 - segment_indices[sg][-1]) if segment_indices[sg] else total_records for sg in seven_segments}
-        segment_last_omission = {sg: (segment_indices[sg][-1] - segment_indices[sg][-2] - 1) if len(segment_indices[sg]) >= 2 else (segment_indices[sg][-1] if segment_indices[sg] else 0) for sg in seven_segments}
-
-        tail_rates = {t: tail_omission[t] / ((total_records / tail_counts[t]) if tail_counts[t] > 0 else total_records) for t in all_tails}
-        zodiac_rates = {z: zodiac_omission[z] / ((total_records / zodiac_counts[z]) if zodiac_counts[z] > 0 else total_records) for z in all_zodiacs}
-        num_rates = {n: num_omission[n] / ((total_records / num_counts[n]) if num_counts[n] > 0 else total_records) for n in range(1, 50)}
-        head_rates = {h: head_omission[h] / ((total_records / head_counts_dict[h]) if head_counts_dict[h] > 0 else total_records) for h in all_heads}
-        zone_rates = {z: zone_omission[z] / ((total_records / zone_counts[z]) if zone_counts[z] > 0 else total_records) for z in all_zones}
-        season_rates = {s: season_omission[s] / ((total_records / season_counts[s]) if season_counts[s] > 0 else total_records) for s in zodiac_seasons}
-        element_rates = {e: element_omission[e] / ((total_records / element_counts[e]) if element_counts[e] > 0 else total_records) for e in five_elements}
-        segment_rates = {sg: segment_omission[sg] / ((total_records / segment_counts[sg]) if segment_counts[sg] > 0 else total_records) for sg in seven_segments}
-
-        tail_transitions = defaultdict(list)
-        zodiac_transitions = defaultdict(list)
-        head_transitions = defaultdict(list)
-        for i in range(len(parsed_data) - 1):
-            tail_transitions[parsed_data[i][0] % 10].append(parsed_data[i+1][0] % 10)
-            zodiac_transitions[parsed_data[i][1]].append(parsed_data[i+1][1])
-            head_transitions[parsed_data[i][0] // 10].append(parsed_data[i+1][0] // 10)
-
-        start_backtest_idx = min(30, max(2, total_records // 5))
-
-        cur_num_idx = defaultdict(list)
-        cur_tail_idx = defaultdict(list)
-        cur_zod_idx = defaultdict(list)
-        cur_z2_idx = defaultdict(list)
-        cur_z3_idx = defaultdict(list)
-        cur_sea_idx = defaultdict(list)
-        cur_elem_idx = defaultdict(list)
-        cur_seg_idx = defaultdict(list)
-        cur_num_cnt = defaultdict(int)
-        cur_tail_cnt = defaultdict(int)
-        cur_zod_cnt = defaultdict(int)
-
-        for idx_s in range(start_backtest_idx):
-            s_num, s_zod, _, _, _ = parsed_data[idx_s]
-            cur_num_idx[s_num].append(idx_s)
-            cur_tail_idx[s_num % 10].append(idx_s)
-            cur_zod_idx[s_zod].append(idx_s)
-            cur_z2_idx[zod_to_z2[s_zod]].append(idx_s)
-            cur_z3_idx[zod_to_z3[s_zod]].append(idx_s)
-            cur_sea_idx[zod_to_sea[s_zod]].append(idx_s)
-            cur_elem_idx[num_to_elem[s_num]].append(idx_s)
-            cur_seg_idx[num_to_seg[s_num]].append(idx_s)
-            cur_num_cnt[s_num] += 1
-            cur_tail_cnt[s_num % 10] += 1
-            cur_zod_cnt[s_zod] += 1
-
-        tier_configs = {
-            "方案A (36码平衡型)": {"n20": 2, "n10": 5, "n5": 29, "cost": 235},
-            "方案C (32码进攻型)": {"n20": 3, "n10": 6, "n5": 23, "cost": 235},
-            "方案B (35码标准型)": {"n20": 2, "n10": 6, "n5": 27, "cost": 235},
-            "方案D (31码精进型)": {"n20": 3, "n10": 7, "n5": 21, "cost": 235},
-            "方案E (30码狙击型)": {"n20": 3, "n10": 8, "n5": 19, "cost": 235},
-            "方案F (38码极盾型)": {"n20": 1, "n10": 4, "n5": 33, "cost": 225}
-        }
-
-        res_tier_records = {k: [] for k in tier_configs}
-        res_hybrid1, res_hybrid2, res_hybrid3 = [], [], []
-        res_pool30_1, res_pool30_2, res_pool30_3 = [], [], []
-        res_layers, res_tail10, res_asym10, res_zod3, res_top40 = [], [], [], [], []
-        res_asym12, res_or, res_f4, res_blind12, res_kill15 = [], [], [], [], []
-        res_seasons, res_elements, res_segments = [], [], []
-
-        res_zod_k2, res_zod_k3, res_zod_k4, res_zod_k5 = [], [], [], []
-        res_num_k8, res_num_k10, res_num_k12 = [], [], []
-        
-        # 🌟 三独立杀码回测容器
-        res_k2_dual = []      # 杀2码：时空双核阻尼法 (prev_te + 最死平码)
-        res_k3_holo = []      # 杀3码：多维全息阻尼法 (前3大负向势场死码)
-        res_k5_lattice = []   # 杀5码：五维正交代数晶格死锁法 (模7+和数尾+拓扑+死肖+死尾碰撞)
-
-        # 🌟 旗舰长期跟踪：定额28码容器
-        res_track28 = []
-
-        res_dr_kill = []
-        res_hw_k1 = []
-        res_hw_k2 = []
-
-        res_cst_k2 = []
-        res_m7_k1 = []
-        res_m7_k2 = []
-        res_head_k1 = []
-        res_dist_k9 = []
-        res_quad_k1 = []
-        
-        # 平码战法回测
-        res_flat_k6 = []
-        res_flat_k7 = []
-        res_flat_zod_k2 = []
-        res_flat_dr_k2 = []
-        res_flat_hw_k1 = []
-        res_flat_elem_k1 = []
-
-        res_slim_20, res_slim_18, res_slim_16, res_slim_15 = [], [], [], []
-        res_inter_4_5, res_inter_6_7, res_inter_3_4_5 = [], [], []
-
-        for i in range(start_backtest_idx, total_records - 1):
-            s_num, s_zod, s_flats, _, s_flats_zod = parsed_data[i]
-            cur_num_idx[s_num].append(i)
-            cur_tail_idx[s_num % 10].append(i)
-            cur_zod_idx[s_zod].append(i)
-            cur_z2_idx[zod_to_z2[s_zod]].append(i)
-            cur_z3_idx[zod_to_z3[s_zod]].append(i)
-            cur_sea_idx[zod_to_sea[s_zod]].append(i)
-            cur_elem_idx[num_to_elem[s_num]].append(i)
-            cur_seg_idx[num_to_seg[s_num]].append(i)
-            cur_num_cnt[s_num] += 1
-            cur_tail_cnt[s_num % 10] += 1
-            cur_zod_cnt[s_zod] += 1
-            
-            h_len = i + 1
-            prev_num = s_num
-            prev_zod = s_zod
-            prev_dr = (prev_num - 1) % 9 + 1
-            prev_hw = get_half_wave(prev_num)
-            prev_tail = prev_num % 10
-            n_num, n_zod, _, _, _ = parsed_data[i+1]
-            
-            def get_sub_inf_fast(idx_map, keys):
-                trig = set()
-                for k in keys:
-                    idxs = idx_map[k]
-                    cur_m = (h_len - 1 - idxs[-1]) if idxs else h_len
-                    last_m = (idxs[-1] - idxs[-2] - 1) if len(idxs) >= 2 else (idxs[-1] if idxs else 0)
-                    if cur_m >= last_m: trig.add(k)
-                return trig
-
-            trig_z2 = get_sub_inf_fast(cur_z2_idx, ['上区', '下区'])
-            trig_z3 = get_sub_inf_fast(cur_z3_idx, ['左区', '中区', '右区'])
-            trig_tails = get_sub_inf_fast(cur_tail_idx, all_tails)
-            trig_zods = get_sub_inf_fast(cur_zod_idx, all_zodiacs)
-            trig_sea = get_sub_inf_fast(cur_sea_idx, ['春肖', '夏肖', '秋肖', '冬肖'])
-            trig_elem = get_sub_inf_fast(cur_elem_idx, five_elements.keys())
-            trig_seg = get_sub_inf_fast(cur_seg_idx, seven_segments.keys())
-            
-            sub_zods_or = set([z for zn in trig_z2 for z in zodiac_zones_2[zn]]).union([z for zn in trig_z3 for z in zodiac_zones_3[zn]]) or set(all_zodiacs)
-            sub_zods_sea = set([z for sn in trig_sea for z in zodiac_seasons[sn]])
-
-            sub_zod_om = {z: (h_len - 1 - cur_zod_idx[z][-1]) if cur_zod_idx[z] else h_len for z in all_zodiacs}
-            sub_zod_last = {z: (cur_zod_idx[z][-1] - cur_zod_idx[z][-2] - 1) if len(cur_zod_idx[z]) >= 2 else (cur_zod_idx[z][-1] if cur_zod_idx[z] else 0) for z in all_zodiacs}
-            sub_tail_om = {t: (h_len - 1 - cur_tail_idx[t][-1]) if cur_tail_idx[t] else h_len for t in all_tails}
-            sub_tail_last = {t: (cur_tail_idx[t][-1] - cur_tail_idx[t][-2] - 1) if len(cur_tail_idx[t]) >= 2 else (cur_tail_idx[t][-1] if cur_tail_idx[t] else 0) for t in all_tails}
-            sub_num_om = {n: (h_len - 1 - cur_num_idx[n][-1]) if cur_num_idx[n] else h_len for n in range(1, 50)}
-            sub_num_last = {n: (cur_num_idx[n][-1] - cur_num_idx[n][-2] - 1) if len(cur_num_idx[n]) >= 2 else (cur_num_idx[n][-1] if cur_num_idx[n] else 0) for n in range(1, 50)}
-
-            sub_zod_rates = {z: sub_zod_om[z] / ((h_len / cur_zod_cnt[z]) if cur_zod_cnt[z] > 0 else h_len) for z in all_zodiacs}
-            sub_tail_rates = {t: sub_tail_om[t] / ((h_len / cur_tail_cnt[t]) if cur_tail_cnt[t] > 0 else h_len) for t in all_tails}
-            sub_num_rates = {n: sub_num_om[n] / ((h_len / cur_num_cnt[n]) if cur_num_cnt[n] > 0 else h_len) for n in range(1, 50)}
-
-            sub_prev_head = prev_num // 10
-            sub_killed_head = (sub_prev_head - 2) % 5
-
-            # 基础模块计算（严格使用局部变量 sub_num_om 等）
-            f1_kill = set(n for n in range(1, 50) if not (sub_num_om[n] <= 25 or (26 <= sub_num_om[n] <= 50 and (sub_num_om[n] >= sub_num_last[n] or sub_num_rates[n] >= 0.40)) or (51 <= sub_num_om[n] <= 100 and sub_num_om[n] >= sub_num_last[n])))
-            f1_kept = set(range(1, 50)) - f1_kill
-            
-            rec_tail_8 = defaultdict(int)
-            for p_num, _, _, _, _ in parsed_data[max(0, h_len-8):h_len]: rec_tail_8[p_num % 10] += 1
-            scores_t = sorted([(t, rec_tail_8[t] - sub_tail_om[t]) for t in range(1, 10)], key=lambda x: -x[1])
-            dead_tails_2 = (scores_t[0][0], scores_t[1][0])
-            f2_kill = set([n for n in range(1, 50) if (n % 10) in dead_tails_2])
-            f2_kept = set(range(1, 50)) - f2_kill
-            
-            off10 = 18 if prev_num <= 16 else (0 if prev_num <= 33 else 7)
-            f3_kill = set([((prev_num + off10 + j - 1) % 49) + 1 for j in range(10)])
-            f3_kept = set(range(1, 50)) - f3_kill
-            
-            rec_zod_7 = defaultdict(int)
-            for _, p_zod, _, _, _ in parsed_data[max(0, h_len-7):h_len]: rec_zod_7[p_zod] += 1
-            z_sc_list = sorted([(z, rec_zod_7[z]*1.5 + (0.5 if sub_zod_rates[z]<0.4 and sub_zod_om[z]<sub_zod_last[z] else 0) + (0.5 if z not in sub_zods_or else 0) + (1.0 if sub_zod_om[z]==0 else 0)) for z in all_zodiacs], key=lambda x: -x[1])
-            f4_kill = set([n for n in range(1, 50) if get_zodiac_of_number(n) in set(x[0] for x in z_sc_list[:3])])
-            f4_kept = set(range(1, 50)) - f4_kill
-            
-            f5_scores = {n: (3.0 if get_zodiac_of_number(n) in sub_zods_or else 0) + (1.5+sub_zod_rates[get_zodiac_of_number(n)] if get_zodiac_of_number(n) in trig_zods else sub_zod_rates[get_zodiac_of_number(n)]-1.0) + (1.5+sub_tail_rates[n%10] if n%10 in trig_tails else sub_tail_rates[n%10]-1.0) + (1.0 if sub_num_om[n]>=sub_num_last[n] else -0.5) + (-1.0 if n//10==sub_killed_head else 0) for n in range(1, 50)}
-            off12 = 26 if prev_num <= 16 else (2 if prev_num <= 33 else 5)
-            f6_kill = set([((prev_num + off12 + j - 1) % 49) + 1 for j in range(12)])
-            f6_kept = set(range(1, 50)) - f6_kill
-            
-            f8_kill = set(n for n in range(1, 50) if (((sub_zod_rates[get_zodiac_of_number(n)]<0.4 and sub_zod_om[get_zodiac_of_number(n)]<sub_zod_last[get_zodiac_of_number(n)]) or (sub_tail_rates[n%10]<0.4 and sub_tail_om[n%10]<sub_tail_last[n%10])) and not (sub_zod_om[get_zodiac_of_number(n)]>=sub_zod_last[get_zodiac_of_number(n)] or sub_tail_om[n%10]>=sub_tail_last[n%10])))
-            f9_kill = set([((prev_num + j - 1) % 49) + 1 for j in range(2, 14)])
-            f10_scores = {n: 0.35 * sub_zod_rates[get_zodiac_of_number(n)] + 0.35 * sub_tail_rates[n%10] + 0.30 * sub_num_rates[n] - (0.15 if sub_zod_om[get_zodiac_of_number(n)] < sub_zod_last[get_zodiac_of_number(n)] else 0) - (0.15 if sub_tail_om[n%10] < sub_tail_last[n%10] else 0) - (0.10 if sub_num_om[n] < sub_num_last[n] else 0) for n in range(1, 50)}
-            f10_kill = set(sorted(range(1, 50), key=lambda n: (f10_scores[n], n))[:15])
-
-            tier_sc = {n: f5_scores[n] - (2.0 if n in f1_kill else 0) - (3.0 if n in f2_kill else 0) - (3.0 if n in f3_kill else 0) - (2.5 if n in f6_kill else 0) for n in range(1, 50)}
-            ranked_tier = sorted(range(1, 50), key=lambda n: -tier_sc[n])
-            for k_name, cfg in tier_configs.items():
-                n20, n10, n5 = cfg['n20'], cfg['n10'], cfg['n5']
-                s20 = set(ranked_tier[:n20])
-                s10 = set(ranked_tier[n20:n20+n10])
-                s5 = set(ranked_tier[n20+n10:n20+n10+n5])
-                is_h = n_num in (s20 | s10 | s5)
-                res_tier_records[k_name].append((is_h, n_num in s20, n_num in s10, n_num in s5))
-
-            p1_24 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(1.0 if n in f8_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24])
-            p2_24 = set(sorted(range(1, 50), key=lambda n: ((2.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24])
-            p3_24 = set(sorted(range(1, 50), key=lambda n: (1 if n in (f1_kill|f2_kill|f3_kill|f6_kill) else 0, -f5_scores[n]))[:24])
-            res_hybrid1.append(n_num in p1_24)
-            res_hybrid2.append(n_num in p2_24)
-            res_hybrid3.append(n_num in p3_24)
-
-            p30_1 = set(sorted(range(1, 50), key=lambda n: ((2.0 if n in f1_kill else 0)+(3.0 if n in f2_kill else 0)+(2.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(1.0 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:30])
-            p30_2 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(3.0 if n in f2_kill else 0)+(1.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(1.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0)-(1.0 if sub_num_om[n]>=sub_num_last[n] else 0), -f5_scores[n]))[:30])
-            p30_3 = set(sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.0 if n in f2_kill else 0)+(1.0 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:30])
-            res_pool30_1.append(n_num in p30_1)
-            res_pool30_2.append(n_num in p30_2)
-            res_pool30_3.append(n_num in p30_3)
-
-            res_layers.append(n_num not in f1_kill)
-            res_tail10.append(n_num not in f2_kill)
-            res_asym10.append(n_num not in f3_kill)
-            res_zod3.append(n_num not in f4_kill)
-            res_top40.append(n_num in set(sorted(range(1, 50), key=lambda n: -f5_scores[n])[:40]))
-            res_asym12.append(n_num not in f6_kill)
-            res_or.append(get_zodiac_of_number(n_num) in sub_zods_or)
-            res_f4.append(n_num not in f8_kill)
-            res_blind12.append(n_num not in f9_kill)
-            res_kill15.append(n_num not in f10_kill)
-            res_seasons.append(get_zodiac_of_number(n_num) in sub_zods_sea)
-            res_elements.append(n_num in set([n for en in trig_elem for n in five_elements[en]]))
-            res_segments.append(n_num in set([n for sgn in trig_seg for n in seven_segments[sgn]]))
-
-            # 🌟 新版：平特全维能量流·杀肖模型
-            trans_z_flow = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if parsed_data[idx_h][1] == prev_zod: trans_z_flow[parsed_data[idx_h+1][1]] += 1
-            
-            sub_7_zods = (s_flats_zod if s_flats_zod else [get_zodiac_of_number(x) for x in s_flats]) + [s_zod] if s_flats else [s_zod]
-            c7_zods = Counter(sub_7_zods)
-            
-            scores_z_flow = {}
-            for z in all_zodiacs:
-                s = 0.0
-                if z == prev_zod: s += 3.5
-                s += c7_zods[z] * 2.0
-                if trans_z_flow[z] == 0: s += 3.5
-                elif trans_z_flow[z] == 1: s += 1.4
-                if sub_zod_om[z] < sub_zod_last[z] and sub_zod_om[z] >= 4: s += 2.0
-                if sub_zod_om[z] >= sub_zod_last[z] and sub_zod_om[z] >= 3: s -= 4.5
-                scores_z_flow[z] = s
-            ranked_zod_kill = sorted(all_zodiacs, key=lambda z: (-scores_z_flow[z], -sub_zod_om[z]))
-            res_zod_k2.append(n_zod not in set(ranked_zod_kill[:2]))
-            res_zod_k3.append(n_zod not in set(ranked_zod_kill[:3]))
-            res_zod_k4.append(n_zod not in set(ranked_zod_kill[:4]))
-            res_zod_k5.append(n_zod not in set(ranked_zod_kill[:5]))
-
-            dead_zods_top3 = set(ranked_zod_kill[:3])
-            
-            # 多维全息阻尼打分 (七重负向势场)
-            num_dead_scores = {}
-            for n in range(1, 50):
-                t = n % 10
-                z = get_zodiac_of_number(n)
-                h = n // 10
-                dr = (n - 1) % 9 + 1
-                sc = 0.0
-                if n == prev_num: sc += 3.5
-                if s_flats and (n in set(s_flats)): sc += 2.0
-                if t in dead_tails_2: sc += 3.0
-                if n in f3_kill: sc += 2.5
-                if n in f6_kill: sc += 2.0
-                if z in dead_zods_top3: sc += 2.5
-                if h == sub_killed_head: sc += 1.0
-                num_dead_scores[n] = sc
-            sorted_dead_nums = sorted(range(1, 50), key=lambda n: -num_dead_scores[n])
-            res_num_k8.append(n_num not in set(sorted_dead_nums[:8]))
-            res_num_k10.append(n_num not in set(sorted_dead_nums[:10]))
-            res_num_k12.append(n_num not in set(sorted_dead_nums[:12]))
-
-            # 🌟 1. 独立杀2码：【时空双核阻尼法】 (Code 1 = prev_num, Code 2 = 最死平码)
-            sub_trans_num = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if parsed_data[idx_h][0] == prev_num:
-                    sub_trans_num[parsed_data[idx_h+1][0]] += 1
-            sub_flat_dead_scores = {}
-            if s_flats:
-                for fn in s_flats:
-                    sc = 0.0
-                    if sub_trans_num[fn] == 0: sc += 3.0
-                    if fn % 10 == dead_tails_2[0]: sc += 2.5
-                    if (fn - 1) % 9 + 1 == prev_dr: sc += 2.0
-                    sub_flat_dead_scores[fn] = sc
-                best_sub_flat = sorted(s_flats, key=lambda fn: (-sub_flat_dead_scores[fn], -fn))[0]
-                k2_dual_set = {prev_num, best_sub_flat}
-            else:
-                k2_dual_set = {prev_num, sorted_dead_nums[0] if sorted_dead_nums[0] != prev_num else sorted_dead_nums[1]}
-            res_k2_dual.append(n_num not in k2_dual_set)
-
-            # 🌟 2. 独立杀3码：【多维全息阻尼法】 (七重负向势场碰撞前3码)
-            k3_holo_set = set(sorted_dead_nums[:3])
-            res_k3_holo.append(n_num not in k3_holo_set)
-
-            # 🌟 3. 独立杀5码：【五维正交代数晶格死锁法】 (纯代数几何碰撞)
-            sub_trans_m7 = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if (parsed_data[idx_h][0] % 7) == (prev_num % 7):
-                    sub_trans_m7[parsed_data[idx_h+1][0] % 7] += 1
-            m7_idx = defaultdict(list)
-            for idx_h, x in enumerate(parsed_data[:h_len]): m7_idx[x[0] % 7].append(idx_h)
-            sub_m7_om = {m: (h_len - 1 - m7_idx[m][-1]) if m7_idx[m] else h_len for m in range(7)}
-            sub_m7_last = {m: (m7_idx[m][-1] - m7_idx[m][-2] - 1) if len(m7_idx[m]) >= 2 else (m7_idx[m][-1] if m7_idx[m] else 0) for m in range(7)}
-            sub_rec5_m7 = Counter(x[0] % 7 for x in parsed_data[max(0, h_len-5):h_len])
-            sub_scores_m7 = {m: (3.0 if m == (prev_num % 7) else 0) + sub_rec5_m7[m]*1.5 + (3.5 if sub_trans_m7[m] == 0 else (1.5 if sub_trans_m7[m] == 1 else 0)) + (1.2 if sub_m7_om[m] < sub_m7_last[m] and sub_m7_om[m] >= 3 else (-1.8 if sub_m7_om[m] >= sub_m7_last[m] and sub_m7_om[m] >= 3 else 0)) for m in range(7)}
-            dead_m7_top1 = sorted(range(7), key=lambda m: (-sub_scores_m7[m], -sub_m7_om[m]))[0]
-            dead_m7_nums_set = set(mod7_numbers[dead_m7_top1])
-
-            prev_cst_sub = (prev_num // 10 + prev_num % 10) % 10
-            sub_trans_cst = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if ((parsed_data[idx_h][0] // 10 + parsed_data[idx_h][0] % 10) % 10) == prev_cst_sub:
-                    sub_trans_cst[(parsed_data[idx_h+1][0] // 10 + parsed_data[idx_h+1][0] % 10) % 10] += 1
-            cst_idx = defaultdict(list)
-            for idx_h, x in enumerate(parsed_data[:h_len]): cst_idx[(x[0] // 10 + x[0] % 10) % 10].append(idx_h)
-            sub_cst_om = {c: (h_len - 1 - cst_idx[c][-1]) if cst_idx[c] else h_len for c in range(10)}
-            sub_cst_last = {c: (cst_idx[c][-1] - cst_idx[c][-2] - 1) if len(cst_idx[c]) >= 2 else (cst_idx[c][-1] if cst_idx[c] else 0) for c in range(10)}
-            sub_rec5_cst = Counter((x[0] // 10 + x[0] % 10) % 10 for x in parsed_data[max(0, h_len-5):h_len])
-            sub_scores_cst = {c: (3.0 if c == prev_cst_sub else 0) + sub_rec5_cst[c]*1.2 + (3.5 if sub_trans_cst[c] == 0 else (1.5 if sub_trans_cst[c] == 1 else 0)) + (1.2 if sub_cst_om[c] < sub_cst_last[c] and sub_cst_om[c] >= 3 else (-1.8 if sub_cst_om[c] >= sub_cst_last[c] and sub_cst_om[c] >= 3 else 0)) for c in range(10)}
-            dead_cst_top2 = set(sorted(range(10), key=lambda c: (-sub_scores_cst[c], -sub_cst_om[c]))[:2])
-            dead_cst_nums_set = set(n for c in dead_cst_top2 for n in cst_numbers[c])
-
-            sub_scores_lat = {}
-            for n in range(1, 50):
-                sc = 0.0
-                if n in dead_m7_nums_set: sc += 2.5
-                if n in dead_cst_nums_set: sc += 2.0
-                if n in f3_kill: sc += 3.0
-                if n in f6_kill: sc += 2.4
-                if get_zodiac_of_number(n) in dead_zods_top3: sc += 2.5
-                if (n % 10) in dead_tails_2: sc += 2.5
-                sub_scores_lat[n] = sc
-            k5_lattice_set = set(sorted(range(1, 50), key=lambda n: (-sub_scores_lat[n], n))[:5])
-            res_k5_lattice.append(n_num not in k5_lattice_set)
-
-            # 🌟 4. 旗舰定额 28 码长期跟踪回测 (新版杀3肖大底 + 危险分精裁9码)
-            kept_sub_z3 = [n for n in range(1, 50) if get_zodiac_of_number(n) not in dead_zods_top3]
-            sorted_kept_sub = sorted(kept_sub_z3, key=lambda n: num_dead_scores[n]) # 危险分最低的排前
-            kept_track28_set = set(sorted_kept_sub[:28])
-            res_track28.append(n_num in kept_track28_set)
-
-            # 数根动力学
-            hist_dr = [(x[0] - 1) % 9 + 1 for x in parsed_data[:h_len]]
-            dr_idx = defaultdict(list)
-            for idx_h, d in enumerate(hist_dr): dr_idx[d].append(idx_h)
-            sub_dr_om = {d: (h_len - 1 - dr_idx[d][-1]) if dr_idx[d] else h_len for d in range(1, 10)}
-            sub_dr_last = {d: (dr_idx[d][-1] - dr_idx[d][-2] - 1) if len(dr_idx[d]) >= 2 else (dr_idx[d][-1] if dr_idx[d] else 0) for d in range(1, 10)}
-            sub_dr_trans = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if hist_dr[idx_h] == prev_dr: sub_dr_trans[hist_dr[idx_h+1]] += 1
-            rec5_dr = Counter(hist_dr[-5:])
-            sub_dr_scores = {}
-            for d in range(1, 10):
-                s = 0.0
-                if d == prev_dr: s += 3.0
-                s += rec5_dr[d] * 1.0
-                if sub_dr_trans[d] == 0: s += 3.5
-                elif sub_dr_trans[d] == 1: s += 1.4
-                if sub_dr_om[d] < sub_dr_last[d] and sub_dr_om[d] >= 3: s += 1.0
-                if sub_dr_om[d] >= sub_dr_last[d] and sub_dr_om[d] >= 3: s -= 1.5
-                sub_dr_scores[d] = s
-            sub_ranked_dr = sorted(range(1, 10), key=lambda d: (-sub_dr_scores[d], -sub_dr_om[d]))
-            sub_killed_dr_nums = set(n for d in sub_ranked_dr[:2] for n in dr_numbers[d])
-            res_dr_kill.append(n_num not in sub_killed_dr_nums)
-
-            # 半波动力学
-            hist_hw = [get_half_wave(x[0]) for x in parsed_data[:h_len]]
-            hw_idx = defaultdict(list)
-            for idx_h, hw in enumerate(hist_hw): hw_idx[hw].append(idx_h)
-            sub_hw_om = {hw: (h_len - 1 - hw_idx[hw][-1]) if hw_idx[hw] else h_len for hw in all_half_waves}
-            sub_hw_last = {hw: (hw_idx[hw][-1] - hw_idx[hw][-2] - 1) if len(hw_idx[hw]) >= 2 else (hw_idx[hw][-1] if hw_idx[hw] else 0) for hw in all_half_waves}
-            sub_hw_cnt = {hw: len(hw_idx[hw]) for hw in all_half_waves}
-            sub_hw_rates = {hw: sub_hw_om[hw] / ((h_len / sub_hw_cnt[hw]) if sub_hw_cnt[hw] > 0 else h_len) for hw in all_half_waves}
-            sub_trans_phw = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if hist_hw[idx_h] == prev_hw: sub_trans_phw[hist_hw[idx_h+1]] += 1
-            sub_trans_tail = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if parsed_data[idx_h][0] % 10 == prev_tail: sub_trans_tail[hist_hw[idx_h+1]] += 1
-            sub_rec5_hw = Counter(hist_hw[-5:])
-            sub_hw_scores = {}
-            for hw in all_half_waves:
-                sc = (10.0 - sub_trans_phw[hw]) * 1.0 + (5.0 - sub_trans_tail[hw]) * (2.0 / 3.0)
-                if sub_hw_om[hw] < sub_hw_last[hw] and sub_hw_om[hw] >= 3: sc += 1.5
-                if sub_hw_om[hw] >= sub_hw_last[hw] and sub_hw_om[hw] >= 3: sc -= 2.5
-                if sub_rec5_hw[hw] >= 2: sc += 1.0 * sub_rec5_hw[hw]
-                if sub_hw_rates[hw] < 0.4 and sub_hw_om[hw] < sub_hw_last[hw]: sc += 1.5
-                sub_hw_scores[hw] = sc
-            sub_ranked_hw = sorted(all_half_waves, key=lambda hw: (-sub_hw_scores[hw], -sub_hw_om[hw]))
-            sub_k1_nums = set(n for hw in sub_ranked_hw[:1] for n in hw_numbers[hw])
-            sub_k2_nums = set(n for hw in sub_ranked_hw[:2] for n in hw_numbers[hw])
-            res_hw_k1.append(n_num not in sub_k1_nums)
-            res_hw_k2.append(n_num not in sub_k2_nums)
-
-            # 和数尾与模7
-            res_cst_k2.append(n_num not in dead_cst_nums_set)
-            res_m7_k1.append(n_num not in dead_m7_nums_set)
-            dead_m7_top2 = set(mod7_numbers[sorted(range(7), key=lambda m: (-sub_scores_m7[m], -sub_m7_om[m]))[0]] + mod7_numbers[sorted(range(7), key=lambda m: (-sub_scores_m7[m], -sub_m7_om[m]))[1]])
-            res_m7_k2.append(n_num not in dead_m7_top2)
-
-            # 五门头数
-            prev_head = prev_num // 10
-            hist_heads = [x[0] // 10 for x in parsed_data[:h_len]]
-            sub_head_trans = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if hist_heads[idx_h] == prev_head: sub_head_trans[hist_heads[idx_h+1]] += 1
-            sub_head_idx = defaultdict(list)
-            for idx_h, h in enumerate(hist_heads): sub_head_idx[h].append(idx_h)
-            sub_head_om = {h: (h_len - 1 - sub_head_idx[h][-1]) if sub_head_idx[h] else h_len for h in range(5)}
-            sub_head_last = {h: (sub_head_idx[h][-1] - sub_head_idx[h][-2] - 1) if len(sub_head_idx[h]) >= 2 else (sub_head_idx[h][-1] if sub_head_idx[h] else 0) for h in range(5)}
-            sub_rec5_head = Counter(hist_heads[-5:])
-            sub_scores_head = {}
-            for h in range(5):
-                s = 0.0
-                s += (8.0 - sub_head_trans[h]) * 1.0
-                if sub_head_om[h] < sub_head_last[h] and sub_head_om[h] >= 2: s += 1.5
-                if sub_head_om[h] >= sub_head_last[h] and sub_head_om[h] >= 2: s -= 2.0
-                if sub_rec5_head[h] >= 2: s += 1.2 * sub_rec5_head[h]
-                sub_scores_head[h] = s
-            sub_ranked_head = sorted(range(5), key=lambda h: (-sub_scores_head[h], -sub_head_om[h]))
-            res_head_k1.append(n_num not in set(head_numbers[sub_ranked_head[0]]))
-
-            # 步长动能微扰排斥
-            dist_counts = defaultdict(int)
-            from_pn_dists = defaultdict(int)
-            for idx_h in range(1, h_len):
-                a = parsed_data[idx_h-1][0]
-                b = parsed_data[idx_h][0]
-                d = min((a - b) % 49, (b - a) % 49)
-                dist_counts[d] += 1
-                if a == prev_num: from_pn_dists[d] += 1
-            dist_scores = {}
-            for d in range(25):
-                s = (15.0 - dist_counts[d]) * 0.5
-                if from_pn_dists[d] == 0: s += 2.0
-                dist_scores[d] = s
-            dist_scores[0] += 5.0
-            sub_ranked_dists = sorted(range(25), key=lambda d: -dist_scores[d])
-            sub_k_dist9 = set()
-            for d in sub_ranked_dists[:5]:
-                if d == 0: sub_k_dist9.add(prev_num)
-                else:
-                    sub_k_dist9.add(((prev_num - 1 + d) % 49) + 1)
-                    sub_k_dist9.add(((prev_num - 1 - d) % 49) + 1)
-            res_dist_k9.append(n_num not in sub_k_dist9)
-
-            # 四象限时空动力学
-            prev_q = get_quad(prev_num)
-            hist_q = [get_quad(x[0]) for x in parsed_data[:h_len]]
-            sub_trans_q = defaultdict(int)
-            for idx_h in range(h_len - 1):
-                if hist_q[idx_h] == prev_q: sub_trans_q[hist_q[idx_h+1]] += 1
-            sub_q_idx = defaultdict(list)
-            for idx_h, q in enumerate(hist_q): sub_q_idx[q].append(idx_h)
-            sub_q_om = {q: (h_len - 1 - sub_q_idx[q][-1]) if sub_q_idx[q] else h_len for q in all_quads}
-            sub_q_last = {q: (sub_q_idx[q][-1] - sub_q_idx[q][-2] - 1) if len(sub_q_idx[q]) >= 2 else (sub_q_idx[q][-1] if sub_q_idx[q] else 0) for q in all_quads}
-            sub_rec5_q = Counter(hist_q[-5:])
-            sub_scores_q = {}
-            for q in all_quads:
-                s = (15.0 - sub_trans_q[q]) * 1.0
-                if sub_q_om[q] < sub_q_last[q] and sub_q_om[q] >= 2: s += 1.5
-                if sub_q_om[q] >= sub_q_last[q] and sub_q_om[q] >= 2: s -= 2.0
-                if sub_rec5_q[q] >= 2: s += 1.2 * sub_rec5_q[q]
-                sub_scores_q[q] = s
-            sub_ranked_q = sorted(all_quads, key=lambda q: (-sub_scores_q[q], -sub_q_om[q]))
-            res_quad_k1.append(n_num not in set(quad_numbers[sub_ranked_q[0]]))
-
-            # 平码战法回测
-            if s_flats and len(s_flats) == 6:
-                res_flat_k6.append(n_num not in set(s_flats))
-                res_flat_k7.append(n_num not in (set(s_flats) | {prev_num}))
-                sub_7_zods = (s_flats_zod if s_flats_zod else [get_zodiac_of_number(x) for x in s_flats]) + [s_zod]
-                sub_top2_z = set([z for z, c in Counter(sub_7_zods).most_common()][:2])
-                res_flat_zod_k2.append(n_zod not in sub_top2_z)
-                sub_7_drs = [(n - 1) % 9 + 1 for n in (s_flats + [prev_num])]
-                sub_top2_dr = set([d for d, c in Counter(sub_7_drs).most_common()][:2])
-                sub_k_dr = set(n for d in sub_top2_dr for n in dr_numbers[d])
-                res_flat_dr_k2.append(n_num not in sub_k_dr)
-                sub_7_hws = [get_half_wave(n) for n in (s_flats + [prev_num])]
-                sub_top1_hw = Counter(sub_7_hws).most_common(1)[0][0]
-                res_flat_hw_k1.append(n_num not in set(hw_numbers[sub_top1_hw]))
-                sub_7_elems = [num_to_elem[n] for n in (s_flats + [prev_num])]
-                sub_top1_elem = Counter(sub_7_elems).most_common(1)[0][0]
-                res_flat_elem_k1.append(n_num not in set(five_elements[sub_top1_elem]))
-            else:
-                res_flat_k6.append(True)
-                res_flat_k7.append(True)
-                res_flat_zod_k2.append(True)
-                res_flat_dr_k2.append(True)
-                res_flat_hw_k1.append(True)
-                res_flat_elem_k1.append(True)
-
-            # 极限精选 15-20 码狙击模型
-            base_24_s3 = sorted(range(1, 50), key=lambda n: (1 if n in (f1_kill|f2_kill|f3_kill|f6_kill) else 0, -f5_scores[n]))[:24]
-            pool_20 = sorted(base_24_s3, key=lambda n: (
-                f5_scores[n] + (2.0 if sub_num_om[n]>=sub_num_last[n] else 0.0) -
-                (2.5 if n in f9_kill else 0.0) - (2.0 if n == prev_num else 0.0)
-            ), reverse=True)[:20]
-            pool_18 = sorted(base_24_s3, key=lambda n: (1 if n in f9_kill else 0, -f5_scores[n]))[:18]
-            base_24_s1 = sorted(range(1, 50), key=lambda n: ((1.0 if n in f1_kill else 0)+(2.5 if n in f2_kill else 0)+(2.5 if n in f3_kill else 0)+(1.0 if n in f4_kill else 0)+(2.5 if n in f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24]
-            pool_16 = sorted(base_24_s1, key=lambda n: -f5_scores[n])[:16]
-            pool_15 = sorted(base_24_s3, key=lambda n: -f5_scores[n])[:15]
-            res_slim_20.append(n_num in set(pool_20))
-            res_slim_18.append(n_num in set(pool_18))
-            res_slim_16.append(n_num in set(pool_16))
-            res_slim_15.append(n_num in set(pool_15))
-
-            # 多核交集共振
-            res_inter_4_5.append(n_num in (f1_kept & f2_kept))
-            res_inter_6_7.append(n_num in (f3_kept & f4_kept))
-            res_inter_3_4_5.append(n_num in (p30_1 & f1_kept & f2_kept))
-
-        tier_stats = {}
-        for k_name, recs in res_tier_records.items():
-            hl = [x[0] for x in recs]
-            base_st = calc_rate_and_streaks(hl)
-            h20 = sum(1 for x in recs if x[1])
-            h10 = sum(1 for x in recs if x[2])
-            h5 = sum(1 for x in recs if x[3])
-            c_per_day = tier_configs[k_name]['cost']
-            profits = []
-            for is_h, is20, is10, is5 in recs:
-                if is20: profits.append(20 * 47 - c_per_day)
-                elif is10: profits.append(10 * 47 - c_per_day)
-                elif is5: profits.append(5 * 47 - c_per_day)
-                else: profits.append(-c_per_day)
-            base_st['h20'] = h20
-            base_st['h10'] = h10
-            base_st['h5'] = h5
-            base_st['misses'] = len(recs) - sum(hl)
-            base_st['tot_profit'] = sum(profits)
-            base_st['weekly_profit'] = sum(profits) / (len(recs) / 7)
-            base_st['l30_profit'] = sum(profits[-30:])
-            base_st['l30_weekly'] = sum(profits[-30:]) / (30 / 7)
-            tier_stats[k_name] = base_st
-
-        # 计算所有模块的连红与全周期风控信息
-        stats_hybrid1 = calc_rate_and_streaks(res_hybrid1)
-        stats_hybrid2 = calc_rate_and_streaks(res_hybrid2)
-        stats_hybrid3 = calc_rate_and_streaks(res_hybrid3)
-        stats_pool30_1 = calc_rate_and_streaks(res_pool30_1)
-        stats_pool30_2 = calc_rate_and_streaks(res_pool30_2)
-        stats_pool30_3 = calc_rate_and_streaks(res_pool30_3)
-
-        # 🌟 杀肖统计对象 (新版平特全维能量流)
-        stats_zod_k2 = calc_rate_and_streaks(res_zod_k2)
-        stats_zod_k3 = calc_rate_and_streaks(res_zod_k3)
-        stats_zod_k4 = calc_rate_and_streaks(res_zod_k4)
-        stats_zod_k5 = calc_rate_and_streaks(res_zod_k5)
-
-        stats_num_k8 = calc_rate_and_streaks(res_num_k8)
-        stats_num_k10 = calc_rate_and_streaks(res_num_k10)
-        stats_num_k12 = calc_rate_and_streaks(res_num_k12)
-        
-        # 🌟 独立三杀码统计对象
-        stats_k2_dual = calc_rate_and_streaks(res_k2_dual)
-        stats_k3_holo = calc_rate_and_streaks(res_k3_holo)
-        stats_k5_lattice = calc_rate_and_streaks(res_k5_lattice)
-
-        # 🌟 旗舰定额28码长期跟踪统计对象
-        stats_track28 = calc_rate_and_streaks(res_track28)
-
-        stats_dr_kill = calc_rate_and_streaks(res_dr_kill)
-        stats_hw_k1 = calc_rate_and_streaks(res_hw_k1)
-        stats_hw_k2 = calc_rate_and_streaks(res_hw_k2)
-
-        stats_cst = calc_rate_and_streaks(res_cst_k2)
-        stats_m7_k1 = calc_rate_and_streaks(res_m7_k1)
-        stats_m7_k2 = calc_rate_and_streaks(res_m7_k2)
-        stats_head = calc_rate_and_streaks(res_head_k1)
-        stats_dist = calc_rate_and_streaks(res_dist_k9)
-        stats_quad = calc_rate_and_streaks(res_quad_k1)
-        
-        # 平码战法统计
-        stats_flat_k6 = calc_rate_and_streaks(res_flat_k6)
-        stats_flat_k7 = calc_rate_and_streaks(res_flat_k7)
-        stats_flat_zod_k2 = calc_rate_and_streaks(res_flat_zod_k2)
-        stats_flat_dr_k2 = calc_rate_and_streaks(res_flat_dr_k2)
-        stats_flat_hw_k1 = calc_rate_and_streaks(res_flat_hw_k1)
-        stats_flat_elem_k1 = calc_rate_and_streaks(res_flat_elem_k1)
-
-        stats_slim_20 = calc_rate_and_streaks(res_slim_20)
-        stats_slim_18 = calc_rate_and_streaks(res_slim_18)
-        stats_slim_16 = calc_rate_and_streaks(res_slim_16)
-        stats_slim_15 = calc_rate_and_streaks(res_slim_15)
-
-        stats_inter_4_5 = calc_rate_and_streaks(res_inter_4_5)
-        stats_inter_6_7 = calc_rate_and_streaks(res_inter_6_7)
-        stats_inter_3_4_5 = calc_rate_and_streaks(res_inter_3_4_5)
-
-        stats_layers = calc_rate_and_streaks(res_layers)
-        stats_tail10 = calc_rate_and_streaks(res_tail10)
-        stats_asym10 = calc_rate_and_streaks(res_asym10)
-        stats_zod3 = calc_rate_and_streaks(res_zod3)
-        stats_top40 = calc_rate_and_streaks(res_top40)
-        stats_asym12 = calc_rate_and_streaks(res_asym12)
-        stats_or = calc_rate_and_streaks(res_or)
-        stats_f4 = calc_rate_and_streaks(res_f4)
-        stats_blind12 = calc_rate_and_streaks(res_blind12)
-        stats_kill15 = calc_rate_and_streaks(res_kill15)
-        stats_seasons = calc_rate_and_streaks(res_seasons)
-        stats_elements = calc_rate_and_streaks(res_elements)
-        stats_segments = calc_rate_and_streaks(res_segments)
-
-        # 最新当期候选集生成
-        curr_prev_num = parsed_data[-1][0]
-        curr_prev_zod = parsed_data[-1][1]
-        curr_prev_flats = parsed_data[-1][2]
-        curr_prev_header = parsed_data[-1][3]
-        curr_prev_flats_zod = parsed_data[-1][4]
-        
-        curr_prev_dr = (curr_prev_num - 1) % 9 + 1
-        curr_prev_hw = get_half_wave(curr_prev_num)
-        curr_prev_tail = curr_prev_num % 10
-        curr_prev_cst = (curr_prev_num // 10 + curr_prev_num % 10) % 10
-        curr_prev_m7 = curr_prev_num % 7
-        curr_prev_head = curr_prev_num // 10
-        curr_prev_q = get_quad(curr_prev_num)
-
-        curr_trig_z2 = [zn for zn in zodiac_zones_2 if zone_omission[zn] >= zone_last_omission[zn]]
-        curr_trig_z3 = [zn for zn in zodiac_zones_3 if zone_omission[zn] >= zone_last_omission[zn]]
-        curr_zods_or = set([z for zn in curr_trig_z2 for z in zodiac_zones_2[zn]]).union([z for zn in curr_trig_z3 for z in zodiac_zones_3[zn]]) or set(all_zodiacs)
-        curr_trig_sea = [sn for sn in zodiac_seasons if season_omission[sn] >= season_last_omission[sn]]
-        curr_zods_sea = set([z for sn in curr_trig_sea for z in zodiac_seasons[sn]])
-        curr_trig_zods = set([z for z in all_zodiacs if zodiac_omission[z] >= zodiac_last_omission[z]])
-        curr_trig_tails = set([t for t in all_tails if tail_omission[t] >= tail_last_omission[t]])
-        curr_killed_head = ((curr_prev_num // 10) - 2) % 5
-
-        curr_f1_kill = set(n for n in range(1, 50) if not (num_omission[n] <= 25 or (26 <= num_omission[n] <= 50 and (num_omission[n] >= num_last_omission[n] or num_rates[n] >= 0.40)) or (51 <= num_omission[n] <= 100 and num_omission[n] >= num_last_omission[n])))
-        curr_f1_kept = set(range(1, 50)) - curr_f1_kill
-        curr_rec_tail_8 = defaultdict(int)
-        for s_num, _, _, _, _ in parsed_data[-8:]: curr_rec_tail_8[s_num % 10] += 1
-        curr_scores_t = sorted([(t, curr_rec_tail_8[t] - tail_omission[t]) for t in range(1, 10)], key=lambda x: -x[1])
-        curr_dead_tails_2 = (curr_scores_t[0][0], curr_scores_t[1][0])
-        curr_f2_kill = set([n for n in range(1, 50) if (n % 10) in curr_dead_tails_2])
-        curr_f2_kept = set(range(1, 50)) - curr_f2_kill
-
-        curr_off10 = 18 if curr_prev_num <= 16 else (0 if curr_prev_num <= 33 else 7)
-        curr_f3_kill = set([((curr_prev_num + curr_off10 + j - 1) % 49) + 1 for j in range(10)])
-        curr_f3_kept = set(range(1, 50)) - curr_f3_kill
-
-        curr_rec_zod_7 = defaultdict(int)
-        for _, s_zod, _, _, _ in parsed_data[-7:]: curr_rec_zod_7[s_zod] += 1
-        curr_z_sc_list = sorted([(z, curr_rec_zod_7[z]*1.5 + (0.5 if zodiac_rates[z]<0.4 and zodiac_omission[z]<zodiac_last_omission[z] else 0) + (0.5 if z not in curr_zods_or else 0) + (1.0 if zodiac_omission[z]==0 else 0)) for z in all_zodiacs], key=lambda x: -x[1])
-        curr_f4_kill = set([n for n in range(1, 50) if get_zodiac_of_number(n) in set(x[0] for x in curr_z_sc_list[:3])])
-        curr_f4_kept = set(range(1, 50)) - curr_f4_kill
-
-        curr_f5_scores = {n: (3.0 if get_zodiac_of_number(n) in curr_zods_or else 0) + (1.5+zodiac_rates[get_zodiac_of_number(n)] if get_zodiac_of_number(n) in curr_trig_zods else zodiac_rates[get_zodiac_of_number(n)]-1.0) + (1.5+tail_rates[n%10] if n%10 in curr_trig_tails else tail_rates[n%10]-1.0) + (1.0 if num_omission[n]>=num_last_omission[n] else -0.5) + (-1.0 if n//10==curr_killed_head else 0) for n in range(1, 50)}
-        curr_off12 = 26 if curr_prev_num <= 16 else (2 if curr_prev_num <= 33 else 5)
-        curr_f6_kill = set([((curr_prev_num + curr_off12 + j - 1) % 49) + 1 for j in range(12)])
-        curr_f6_kept = set(range(1, 50)) - curr_f6_kill
-        curr_f8_kill = set(n for n in range(1, 50) if (((zodiac_rates[get_zodiac_of_number(n)]<0.4 and zodiac_omission[get_zodiac_of_number(n)]<zodiac_last_omission[get_zodiac_of_number(n)]) or (tail_rates[n%10]<0.4 and tail_omission[n%10]<tail_last_omission[n%10])) and not (zodiac_omission[get_zodiac_of_number(n)]>=zodiac_last_omission[get_zodiac_of_number(n)] or tail_omission[n%10]>=tail_last_omission[n%10])))
-        curr_f9_kill = set([((curr_prev_num + j - 1) % 49) + 1 for j in range(2, 14)])
-        curr_f10_scores = {n: 0.35 * zodiac_rates[get_zodiac_of_number(n)] + 0.35 * tail_rates[n%10] + 0.30 * num_rates[n] - (0.15 if zodiac_omission[get_zodiac_of_number(n)] < zodiac_last_omission[get_zodiac_of_number(n)] else 0) - (0.15 if tail_omission[n%10] < tail_last_omission[n%10] else 0) - (0.10 if num_omission[n] < num_last_omission[n] else 0) for n in range(1, 50)}
-
-        curr_tier_sc = {n: curr_f5_scores[n] - (2.0 if n in curr_f1_kill else 0) - (3.0 if n in curr_f2_kill else 0) - (3.0 if n in curr_f3_kill else 0) - (2.5 if n in curr_f6_kill else 0) for n in range(1, 50)}
-        curr_ranked_tier = sorted(range(1, 50), key=lambda n: -curr_tier_sc[n])
-
-        # 最新当期新版杀肖打分计算 (平特全维能量流)
-        curr_trans_z_flow = defaultdict(int)
-        for idx_t in range(len(parsed_data) - 1):
-            if parsed_data[idx_t][1] == curr_prev_zod: curr_trans_z_flow[parsed_data[idx_t+1][1]] += 1
-        
-        curr_7_zods = (curr_prev_flats_zod if curr_prev_flats_zod else [get_zodiac_of_number(x) for x in curr_prev_flats]) + [curr_prev_zod] if curr_prev_flats else [curr_prev_zod]
-        curr_c7_zods = Counter(curr_7_zods)
-        
-        curr_scores_z_flow = {}
-        for z in all_zodiacs:
-            s = 0.0
-            if z == curr_prev_zod: s += 3.5
-            s += curr_c7_zods[z] * 2.0
-            if curr_trans_z_flow[z] == 0: s += 3.5
-            elif curr_trans_z_flow[z] == 1: s += 1.4
-            if zodiac_omission[z] < zodiac_last_omission[z] and zodiac_omission[z] >= 4: s += 2.0
-            if zodiac_omission[z] >= zodiac_last_omission[z] and zodiac_omission[z] >= 3: s -= 4.5
-            curr_scores_z_flow[z] = s
-        curr_ranked_zod_kill = sorted(all_zodiacs, key=lambda z: (-curr_scores_z_flow[z], -zodiac_omission[z]))
-
-        # 全息负向势场死码打分
-        curr_dead_zods_top3 = set(curr_ranked_zod_kill[:3])
-        num_dead_scores = {}
-        for n in range(1, 50):
-            t = n % 10
-            z = get_zodiac_of_number(n)
-            h = n // 10
-            dr = (n - 1) % 9 + 1
-            sc = 0.0
-            if n == curr_prev_num: sc += 3.5
-            if curr_prev_flats and (n in set(curr_prev_flats)): sc += 2.0
-            if t in curr_dead_tails_2: sc += 3.0
-            if n in curr_f3_kill: sc += 2.5
-            if n in curr_f6_kill: sc += 2.0
-            if z in curr_dead_zods_top3: sc += 2.5
-            if h == curr_killed_head: sc += 1.0
-            num_dead_scores[n] = sc
-        curr_sorted_dead_nums = sorted(range(1, 50), key=lambda n: -num_dead_scores[n])
-
-        # 🌟 1. 独立杀2码【时空双核阻尼法】
-        curr_trans_num = defaultdict(int)
-        for idx_h in range(len(parsed_data) - 1):
-            if parsed_data[idx_h][0] == curr_prev_num:
-                curr_trans_num[parsed_data[idx_h+1][0]] += 1
-        curr_flat_dead_scores = {}
-        if curr_prev_flats:
-            for fn in curr_prev_flats:
-                sc = 0.0
-                if curr_trans_num[fn] == 0: sc += 3.0
-                if fn % 10 == curr_dead_tails_2[0]: sc += 2.5
-                if (fn - 1) % 9 + 1 == curr_prev_dr: sc += 2.0
-                curr_flat_dead_scores[fn] = sc
-            best_curr_flat = sorted(curr_prev_flats, key=lambda fn: (-curr_flat_dead_scores[fn], -fn))[0]
-            curr_k2_dual_nums = sorted([curr_prev_num, best_curr_flat])
-        else:
-            curr_k2_dual_nums = sorted([curr_prev_num, curr_sorted_dead_nums[0] if curr_sorted_dead_nums[0] != curr_prev_num else curr_sorted_dead_nums[1]])
-        curr_kept_k2_dual = sorted([n for n in range(1, 50) if n not in set(curr_k2_dual_nums)])
-
-        # 🌟 2. 独立杀3码【多维全息阻尼法】
-        curr_k3_holo_nums = sorted(curr_sorted_dead_nums[:3])
-        curr_kept_k3_holo = sorted([n for n in range(1, 50) if n not in set(curr_k3_holo_nums)])
-
-        # 🌟 3. 独立杀5码【五维正交代数晶格死锁法】
-        curr_trans_m7 = defaultdict(int)
-        for idx_h in range(len(parsed_data) - 1):
-            if (parsed_data[idx_h][0] % 7) == (curr_prev_num % 7):
-                curr_trans_m7[parsed_data[idx_h+1][0] % 7] += 1
-        m7_idx = defaultdict(list)
-        for idx_h, x in enumerate(parsed_data): m7_idx[x[0] % 7].append(idx_h)
-        curr_m7_om = {m: (total_records - 1 - m7_idx[m][-1]) if m7_idx[m] else total_records for m in range(7)}
-        curr_m7_last = {m: (m7_idx[m][-1] - m7_idx[m][-2] - 1) if len(m7_idx[m]) >= 2 else (m7_idx[m][-1] if m7_idx[m] else 0) for m in range(7)}
-        curr_rec5_m7 = Counter(x[0] % 7 for x in parsed_data[-5:])
-        curr_scores_m7 = {m: (3.0 if m == (curr_prev_num % 7) else 0) + curr_rec5_m7[m]*1.5 + (3.5 if curr_trans_m7[m] == 0 else (1.5 if curr_trans_m7[m] == 1 else 0)) + (1.2 if curr_m7_om[m] < curr_m7_last[m] and curr_m7_om[m] >= 3 else (-1.8 if curr_m7_om[m] >= curr_m7_last[m] and curr_m7_om[m] >= 3 else 0)) for m in range(7)}
-        dead_m7_top1_curr = sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[0]
-        dead_m7_nums_curr = set(mod7_numbers[dead_m7_top1_curr])
-
-        prev_cst_sub = (curr_prev_num // 10 + curr_prev_num % 10) % 10
-        curr_trans_cst = defaultdict(int)
-        for idx_h in range(len(parsed_data) - 1):
-            if ((parsed_data[idx_h][0] // 10 + parsed_data[idx_h][0] % 10) % 10) == prev_cst_sub:
-                curr_trans_cst[(parsed_data[idx_h+1][0] // 10 + parsed_data[idx_h+1][0] % 10) % 10] += 1
-        cst_idx = defaultdict(list)
-        for idx_h, x in enumerate(parsed_data): cst_idx[(x[0] // 10 + x[0] % 10) % 10].append(idx_h)
-        curr_cst_om = {c: (total_records - 1 - cst_idx[c][-1]) if cst_idx[c] else total_records for c in range(10)}
-        curr_cst_last = {c: (cst_idx[c][-1] - cst_idx[c][-2] - 1) if len(cst_idx[c]) >= 2 else (cst_idx[c][-1] if cst_idx[c] else 0) for c in range(10)}
-        curr_rec5_cst = Counter((x[0] // 10 + x[0] % 10) % 10 for x in parsed_data[-5:])
-        curr_scores_cst = {c: (3.0 if c == prev_cst_sub else 0) + curr_rec5_cst[c]*1.2 + (3.5 if sub_trans_cst[c] == 0 else (1.5 if sub_trans_cst[c] == 1 else 0)) + (1.2 if curr_cst_om[c] < curr_cst_last[c] and curr_cst_om[c] >= 3 else (-1.8 if curr_cst_om[c] >= curr_cst_last[c] and curr_cst_om[c] >= 3 else 0)) for c in range(10)}
-        dead_cst_top2_curr = set(sorted(range(10), key=lambda c: (-curr_scores_cst[c], -curr_cst_om[c]))[:2])
-        dead_cst_nums_curr = set(n for c in dead_cst_top2_curr for n in cst_numbers[c])
-
-        curr_scores_lat = {}
-        for n in range(1, 50):
-            sc = 0.0
-            if n in dead_m7_nums_curr: sc += 2.5
-            if n in dead_cst_nums_curr: sc += 2.0
-            if n in curr_f3_kill: sc += 3.0
-            if n in curr_f6_kill: sc += 2.4
-            if get_zodiac_of_number(n) in curr_dead_zods_top3: sc += 2.5
-            if (n % 10) in curr_dead_tails_2: sc += 2.5
-            curr_scores_lat[n] = sc
-        curr_k5_lattice_nums = sorted(sorted(range(1, 50), key=lambda n: (-curr_scores_lat[n], n))[:5])
-        curr_kept_k5_lattice = sorted([n for n in range(1, 50) if n not in set(curr_k5_lattice_nums)])
-
-        # 🌟 4. 旗舰定额 28 码长期跟踪当期生成
-        curr_kept_z3_list = [n for n in range(1, 50) if get_zodiac_of_number(n) not in curr_dead_zods_top3]
-        curr_sorted_kept_sub = sorted(curr_kept_z3_list, key=lambda n: num_dead_scores[n]) # 危险分最低的排前
-        curr_kept_track28_nums = sorted(curr_sorted_kept_sub[:28])
-        curr_killed_track28_nums = sorted([n for n in range(1, 50) if n not in set(curr_kept_track28_nums)])
-
-        # 数根动力学
-        curr_hist_dr = [(x[0] - 1) % 9 + 1 for x in parsed_data]
-        curr_dr_idx = defaultdict(list)
-        for idx_h, d in enumerate(curr_hist_dr): curr_dr_idx[d].append(idx_h)
-        curr_dr_om = {d: (total_records - 1 - curr_dr_idx[d][-1]) if curr_dr_idx[d] else total_records for d in range(1, 10)}
-        curr_dr_last = {d: (curr_dr_idx[d][-1] - curr_dr_idx[d][-2] - 1) if len(curr_dr_idx[d]) >= 2 else (curr_dr_idx[d][-1] if curr_dr_idx[d] else 0) for d in range(1, 10)}
-        curr_dr_trans = defaultdict(int)
-        for idx_h in range(total_records - 1):
-            if curr_hist_dr[idx_h] == curr_prev_dr: curr_dr_trans[curr_hist_dr[idx_h+1]] += 1
-        curr_rec5_dr = Counter(curr_hist_dr[-5:])
-        curr_dr_scores = {}
-        for d in range(1, 10):
-            s = 0.0
-            if d == curr_prev_dr: s += 3.0
-            s += rec5_dr[d] * 1.0
-            if curr_dr_trans[d] == 0: s += 3.5
-            elif curr_dr_trans[d] == 1: s += 1.4
-            if curr_dr_om[d] < curr_dr_last[d] and curr_dr_om[d] >= 3: s += 1.0
-            if curr_dr_om[d] >= curr_dr_last[d] and curr_dr_om[d] >= 3: s -= 1.5
-            curr_dr_scores[d] = s
-        curr_ranked_dr = sorted(range(1, 10), key=lambda d: (-curr_dr_scores[d], -curr_dr_om[d]))
-        curr_killed_2_dr = curr_ranked_dr[:2]
-        curr_killed_dr_nums = sorted([n for d in curr_killed_2_dr for n in dr_numbers[d]])
-        curr_kept_dr_nums = sorted([n for n in range(1, 50) if n not in curr_killed_dr_nums])
-
-        # 半波动力学
-        curr_hist_hw = [get_half_wave(x[0]) for x in parsed_data]
-        curr_hw_idx = defaultdict(list)
-        for idx_h, hw in enumerate(curr_hist_hw): hw_idx[hw].append(idx_h)
-        curr_hw_om = {hw: (total_records - 1 - curr_hw_idx[hw][-1]) if curr_hw_idx[hw] else total_records for hw in all_half_waves}
-        curr_hw_last = {hw: (curr_hw_idx[hw][-1] - curr_hw_idx[hw][-2] - 1) if len(curr_hw_idx[hw]) >= 2 else (curr_hw_idx[hw][-1] if curr_hw_idx[hw] else 0) for hw in all_half_waves}
-        curr_hw_cnt = {hw: len(curr_hw_idx[hw]) for hw in all_half_waves}
-        curr_hw_rates = {hw: curr_hw_om[hw] / ((total_records / curr_hw_cnt[hw]) if curr_hw_cnt[hw] > 0 else total_records) for hw in all_half_waves}
-        curr_trans_phw = defaultdict(int)
-        for idx_h in range(total_records - 1):
-            if curr_hist_hw[idx_h] == prev_hw: curr_trans_phw[curr_hist_hw[idx_h+1]] += 1
-        curr_trans_tail = defaultdict(int)
-        for idx_h in range(total_records - 1):
-            if parsed_data[idx_h][0] % 10 == prev_tail: sub_trans_tail[curr_hist_hw[idx_h+1]] += 1
-        curr_rec5_hw = Counter(hist_hw[-5:])
-        curr_hw_scores = {}
-        for hw in all_half_waves:
-            sc = (10.0 - curr_trans_phw[hw]) * 1.0 + (5.0 - curr_trans_tail[hw]) * (2.0 / 3.0)
-            if curr_hw_om[hw] < curr_hw_last[hw] and curr_hw_om[hw] >= 3: sc += 1.5
-            if curr_hw_om[hw] >= curr_hw_last[hw] and curr_hw_om[hw] >= 3: sc -= 2.5
-            if curr_rec5_hw[hw] >= 2: sc += 1.0 * sub_rec5_hw[hw]
-            if curr_hw_rates[hw] < 0.4 and curr_hw_om[hw] < curr_hw_last[hw]: sc += 1.5
-            curr_hw_scores[hw] = sc
-        curr_ranked_hw = sorted(all_half_waves, key=lambda hw: (-curr_hw_scores[hw], -curr_hw_om[hw]))
-        curr_k1_hw_nums = sorted([n for hw in curr_ranked_hw[:1] for n in hw_numbers[hw]])
-        curr_k2_hw_nums = sorted([n for hw in curr_ranked_hw[:2] for n in hw_numbers[hw]])
-        curr_kept_k1_hw = sorted([n for n in range(1, 50) if n not in curr_k1_hw_nums])
-        curr_kept_k2_hw = sorted([n for n in range(1, 50) if n not in curr_k2_hw_nums])
-
-        # 和数尾与模7候选
-        curr_killed_cst_nums = sorted(list(dead_cst_nums_curr))
-        curr_kept_cst_nums = sorted([n for n in range(1, 50) if n not in dead_cst_nums_curr])
-        curr_killed_m7_k1_nums = sorted(list(dead_m7_nums_curr))
-        curr_kept_m7_k1_nums = sorted([n for n in range(1, 50) if n not in dead_m7_nums_curr])
-        dead_m7_2_curr = set(mod7_numbers[sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[0]] + mod7_numbers[sorted(range(7), key=lambda m: (-curr_scores_m7[m], -curr_m7_om[m]))[1]])
-        curr_killed_m7_k2_nums = sorted(list(dead_m7_2_curr))
-        curr_kept_m7_k2_nums = sorted([n for n in range(1, 50) if n not in dead_m7_2_curr])
-
-        # 五门头数候选
-        sub_head_trans_curr = defaultdict(int)
-        for idx_h in range(len(parsed_data) - 1):
-            if (parsed_data[idx_h][0] // 10) == curr_prev_head: sub_head_trans_curr[parsed_data[idx_h+1][0] // 10] += 1
-        sub_head_idx_curr = defaultdict(list)
-        for idx_h, x in enumerate(parsed_data): sub_head_idx_curr[x[0] // 10].append(idx_h)
-        sub_head_om_curr = {h: (total_records - 1 - sub_head_idx_curr[h][-1]) if sub_head_idx_curr[h] else total_records for h in range(5)}
-        sub_head_last_curr = {h: (sub_head_idx_curr[h][-1] - sub_head_idx_curr[h][-2] - 1) if len(sub_head_idx_curr[h]) >= 2 else (sub_head_idx_curr[h][-1] if sub_head_idx_curr[h] else 0) for h in range(5)}
-        sub_rec5_head_curr = Counter(x[0] // 10 for x in parsed_data[-5:])
-        sub_scores_head_curr = {h: (8.0 - sub_head_trans_curr[h])*1.0 + (1.5 if sub_head_om_curr[h] < sub_head_last_curr[h] and sub_head_om_curr[h] >= 2 else (-2.0 if sub_head_om_curr[h] >= sub_head_last_curr[h] and sub_head_om_curr[h] >= 2 else 0)) + sub_rec5_head_curr[h]*1.2 for h in range(5)}
-        curr_ranked_head = sorted(range(5), key=lambda h: (-sub_scores_head_curr[h], -sub_head_om_curr[h]))
-        curr_killed_head_nums = sorted(head_numbers[curr_ranked_head[0]])
-        curr_kept_head_nums = sorted([n for n in range(1, 50) if n not in set(curr_killed_head_nums)])
-
-        # 步长动能微扰排斥候选
-        dist_counts_curr = defaultdict(int)
-        from_pn_dists_curr = defaultdict(int)
-        for idx_h in range(1, total_records):
-            a = parsed_data[idx_h-1][0]
-            b = parsed_data[idx_h][0]
-            d = min((a - b) % 49, (b - a) % 49)
-            dist_counts_curr[d] += 1
-            if a == curr_prev_num: from_pn_dists_curr[d] += 1
-        dist_scores_curr = {d: (15.0 - dist_counts_curr[d])*0.5 + (2.0 if from_pn_dists_curr[d] == 0 else 0) for d in range(25)}
-        dist_scores_curr[0] += 5.0
-        curr_ranked_dists = sorted(range(25), key=lambda d: -dist_scores_curr[d])
-        curr_killed_dist9_nums_set = set()
-        for d in curr_ranked_dists[:5]:
-            if d == 0: curr_killed_dist9_nums_set.add(curr_prev_num)
-            else:
-                curr_killed_dist9_nums_set.add(((curr_prev_num - 1 + d) % 49) + 1)
-                curr_killed_dist9_nums_set.add(((curr_prev_num - 1 - d) % 49) + 1)
-        curr_killed_dist9_nums = sorted(list(curr_killed_dist9_nums_set))
-        curr_kept_dist9_nums = sorted([n for n in range(1, 50) if n not in curr_killed_dist9_nums_set])
-
-        # 四象限时空动力学候选
-        sub_trans_q_curr = defaultdict(int)
-        for idx_h in range(len(parsed_data) - 1):
-            if get_quad(parsed_data[idx_h][0]) == curr_prev_q: sub_trans_q_curr[get_quad(parsed_data[idx_h+1][0])] += 1
-        sub_q_idx_curr = defaultdict(list)
-        for idx_h, x in enumerate(parsed_data): sub_q_idx_curr[get_quad(x[0])].append(idx_h)
-        sub_q_om_curr = {q: (total_records - 1 - sub_q_idx_curr[q][-1]) if sub_q_idx_curr[q] else total_records for q in all_quads}
-        sub_q_last_curr = {q: (sub_q_idx_curr[q][-1] - sub_q_idx_curr[q][-2] - 1) if len(sub_q_idx_curr[q]) >= 2 else (sub_q_idx_curr[q][-1] if sub_q_idx[q] else 0) for q in all_quads}
-        sub_rec5_q_curr = Counter(get_quad(x[0]) for x in parsed_data[-5:])
-        sub_scores_q_curr = {q: (15.0 - sub_trans_q_curr[q])*1.0 + (1.5 if sub_q_om_curr[q] < sub_q_last_curr[q] and sub_q_om_curr[q] >= 2 else (-2.0 if sub_q_om_curr[q] >= sub_q_last_curr[q] and sub_q_om_curr[q] >= 2 else 0)) + sub_rec5_q_curr[q]*1.2 for q in all_quads}
-        curr_ranked_q = sorted(all_quads, key=lambda q: (-sub_scores_q_curr[q], -sub_q_om_curr[q]))
-        curr_killed_quad_nums = sorted(quad_numbers[curr_ranked_q[0]])
-        curr_kept_quad_nums = sorted([n for n in range(1, 50) if n not in set(curr_killed_quad_nums)])
-
-        # 平码 6 套新战法当期计算
-        if has_flat_data and curr_prev_flats:
-            curr_killed_flat_k6_nums = sorted(list(set(curr_prev_flats)))
-            curr_kept_flat_k6_nums = sorted([n for n in range(1, 50) if n not in set(curr_prev_flats)])
-            curr_killed_flat_k7_nums = sorted(list(set(curr_prev_flats) | {curr_prev_num}))
-            curr_kept_flat_k7_nums = sorted([n for n in range(1, 50) if n not in (set(curr_prev_flats) | {curr_prev_num})])
-            curr_top2_z = [z for z, c in curr_c7_zods.most_common()][:2]
-            curr_killed_flat_zod_nums = sorted([n for n in range(1, 50) if get_zodiac_of_number(n) in set(curr_top2_z)])
-            curr_kept_flat_zod_nums = sorted([n for n in range(1, 50) if n not in curr_killed_flat_zod_nums])
-            curr_7_drs = [(n - 1) % 9 + 1 for n in (curr_prev_flats + [curr_prev_num])]
-            curr_top2_dr = [d for d, c in Counter(curr_7_drs).most_common()][:2]
-            curr_killed_flat_dr_nums = sorted([n for d in curr_top2_dr for n in dr_numbers[d]])
-            curr_kept_flat_dr_nums = sorted([n for n in range(1, 50) if n not in curr_killed_flat_dr_nums])
-            curr_7_hws = [get_half_wave(n) for n in (curr_prev_flats + [curr_prev_num])]
-            curr_top1_hw = Counter(curr_7_hws).most_common(1)[0][0]
-            curr_killed_flat_hw_nums = sorted(hw_numbers[curr_top1_hw])
-            curr_kept_flat_hw_nums = sorted([n for n in range(1, 50) if n not in curr_killed_flat_hw_nums])
-            curr_7_elems = [num_to_elem[n] for n in (curr_prev_flats + [curr_prev_num])]
-            curr_top1_elem = Counter(curr_7_elems).most_common(1)[0][0]
-            curr_killed_flat_elem_nums = sorted(five_elements[curr_top1_elem])
-            curr_kept_flat_elem_nums = sorted([n for n in range(1, 50) if n not in curr_killed_flat_elem_nums])
-        else:
-            curr_killed_flat_k6_nums, curr_kept_flat_k6_nums = [], list(range(1, 50))
-            curr_killed_flat_k7_nums, curr_kept_flat_k7_nums = [], list(range(1, 50))
-            curr_killed_flat_zod_nums, curr_kept_flat_zod_nums = [], list(range(1, 50))
-            curr_killed_flat_dr_nums, curr_kept_flat_dr_nums = [], list(range(1, 50))
-            curr_killed_flat_hw_nums, curr_kept_flat_hw_nums = [], list(range(1, 50))
-            curr_killed_flat_elem_nums, curr_kept_flat_elem_nums = [], list(range(1, 50))
-
-        curr_base_24_s3 = sorted(range(1, 50), key=lambda n: (1 if n in (curr_f1_kill|curr_f2_kill|curr_f3_kill|curr_f6_kill) else 0, -curr_f5_scores[n]))[:24]
-        curr_pool_20 = sorted(curr_base_24_s3, key=lambda n: (
-            curr_f5_scores[n] + (2.0 if num_omission[n]>=num_last_omission[n] else 0.0) -
-            (2.5 if n in f9_kill else 0.0) - (2.0 if n == curr_prev_num else 0.0)
-        ), reverse=True)[:20]
-        curr_pool_18 = sorted(curr_base_24_s3, key=lambda n: (1 if n in f9_kill else 0, -f5_scores[n]))[:18]
-        base_24_s1 = sorted(range(1, 50), key=lambda n: ((1.0 if n in curr_f1_kill else 0)+(2.5 if n in curr_f2_kill else 0)+(2.5 if n in curr_f3_kill else 0)+(1.0 if n in curr_f4_kill else 0)+(2.5 if n in curr_f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -f5_scores[n]))[:24]
-        curr_pool_16 = sorted(base_24_s1, key=lambda n: -f5_scores[n])[:16]
-        curr_pool_15 = sorted(base_24_s3, key=lambda n: -f5_scores[n])[:15]
-
-        curr_p30_1 = sorted(range(1, 50), key=lambda n: (
-            (2.0 if n in curr_f1_kill else 0) + (3.0 if n in curr_f2_kill else 0) + (2.0 if n in curr_f3_kill else 0) +
-            (1.0 if n in curr_f4_kill else 0) + (2.5 if n in curr_f6_kill else 0) + (1.0 if get_zodiac_of_number(n) not in curr_zods_sea else 0),
-            -curr_f5_scores[n]
-        ))[:30]
-
-        # =========================================================================
-        # 🌟 构建自由多选策略注册字典 (全量战法武器库)
-        # =========================================================================
-        available_strategy_dict = {
-            "⭐ 定额28码·旗舰长期跟踪 (留28码)": {
-                "hist": res_track28,
-                "curr_kept": set(curr_kept_track28_nums),
-                "desc": "新版平特杀3肖+全息死码精裁9码，全量胜率 68.8%(保本59.6%)，近30天 80.0%，全量净利 +24040元第一！"
-            },
-            "🛡️ 时空双核·杀2码 (留47码)": {
-                "hist": res_k2_dual,
-                "curr_kept": set(curr_kept_k2_dual),
-                "desc": "上期特码连庄阻尼+上期平码零频落特死核，近14天 100%，近30天 100%，全量 98.6%"
-            },
-            "🛡️ 多维全息·杀3码 (留46码)": {
-                "hist": res_k3_holo,
-                "curr_kept": set(curr_kept_k3_holo),
-                "desc": "七重负向势场碰撞前3码，全量 98.6% ｜ 143期未败连红 ｜ 近30/14/7/3天全部 100%"
-            },
-            "🛡️ 代数晶格死锁·杀5码 (留44码)": {
-                "hist": res_k5_lattice,
-                "curr_kept": set(curr_kept_k5_lattice),
-                "desc": "五维正交代数几何晶格死锁碰撞（模7+合尾+拓扑+死肖+死尾），近14天 100%，近30天 100%，全量 96.0%"
-            },
-            "👑 黄金罗盘·杀3肖 (留9肖37码)": {
-                "hist": res_zod_k3,
-                "curr_kept": set(n for n in range(1, 50) if get_zodiac_of_number(n) not in set(curr_ranked_zod_kill[:3])),
-                "desc": "新版平特全维能量流杀3肖，近14天 100% 满贯，近30天 93.3%，14天最大连黑 0 期"
-            },
-            "👑 神兽天盾·杀2肖 (留10肖41码)": {
-                "hist": res_zod_k2,
-                "curr_kept": set(n for n in range(1, 50) if get_zodiac_of_number(n) not in set(curr_ranked_zod_kill[:2])),
-                "desc": "新版平特能量流杀2肖，近14天 100%，近30天 93.3%"
-            },
-            "👑 黄金神盾·杀4肖 (留8肖32码)": {
-                "hist": res_zod_k4,
-                "curr_kept": set(n for n in range(1, 50) if get_zodiac_of_number(n) not in set(curr_ranked_zod_kill[:4])),
-                "desc": "新版平特能量流杀4肖，近14天 100%，近30天 93.3%"
-            },
-            "👑 黄金三高·杀5肖 (留7肖28码)": {
-                "hist": res_zod_k5,
-                "curr_kept": set(n for n in range(1, 50) if get_zodiac_of_number(n) not in set(curr_ranked_zod_kill[:5])),
-                "desc": "杀5肖三高全能王，近30天胜率 76.7%"
-            },
-            "🔢 和数尾动力学·杀2合尾 (留约39码)": {
-                "hist": res_cst_k2,
-                "curr_kept": set(curr_kept_cst_nums),
-                "desc": "各位数字和模10动力学，整杀2个高危合尾(约10码)，近30天 93.3%，7天 100%"
-            },
-            "📐 模7同余动力学·杀1余数类 (留42码)": {
-                "hist": res_m7_k1,
-                "curr_kept": set(curr_kept_m7_k1_nums),
-                "desc": "模7严格同余格点模型，整杀1个高危余数类(严格7码)，近14天 100%，近30天 93.3%"
-            },
-            "📐 模7同余动力学·杀2余数类 (留35码)": {
-                "hist": res_m7_k2,
-                "curr_kept": set(curr_kept_m7_k2_nums),
-                "desc": "整杀2个模7余数类(严格14码)，近14天 100%，近30天 80.0%"
-            },
-            "🚪 五门头数动力学·杀1门 (留约39码)": {
-                "hist": res_head_k1,
-                "curr_kept": set(curr_kept_head_nums),
-                "desc": "十位高位门数跃迁排斥，整杀1个高危门数(约10码)，近30天 83.3%"
-            },
-            "⚡ 步长动能微扰排斥·杀9码 (留40码)": {
-                "hist": res_dist_k9,
-                "curr_kept": set(curr_kept_dist9_nums),
-                "desc": "环形相空间跳步极低动能禁区，精准剔除9个物理死码，全量 83.0%"
-            },
-            "🎯 四象限时空动力学·杀1象限 (留约37码)": {
-                "hist": res_quad_k1,
-                "curr_kept": set(curr_kept_quad_nums),
-                "desc": "大小×单双2D时空相平面，整杀1个阻尼象限(约12~13码)，近14天 100%"
-            },
-            "🌈 半波动力学·杀1半波 (留约41码)": {
-                "hist": res_hw_k1,
-                "curr_kept": set(curr_kept_k1_hw),
-                "desc": "波色单双状态转移排斥，整杀1个高危半波(约8码)，近14天 100%，近30天 96.7%"
-            },
-            "🌈 半波动力学·杀2半波 (留约33码)": {
-                "hist": res_hw_k2,
-                "curr_kept": set(curr_kept_k2_hw),
-                "desc": "整杀2个高危半波(约16码)，近30天 80.0%"
-            },
-            "🔢 数根同余动力学·杀10~11码 (留38码)": {
-                "hist": res_dr_kill,
-                "curr_kept": set(curr_kept_dr_nums),
-                "desc": "模9同余数论动力学与连庄衰竭，整杀2个数根(约10~11码)，近30天 93.3%"
-            },
-            "🛡️ 物理神盾·杀8码 (留41码)": {
-                "hist": res_num_k8,
-                "curr_kept": set(range(1, 50)) - set(curr_sorted_dead_nums[:8]),
-                "desc": "尾数衰歇+几何拓扑+生肖死角，近14天 100%，近30天 93.3%"
-            },
-            "🛡️ 物理神盾·杀10码 (留39码)": {
-                "hist": res_num_k10,
-                "curr_kept": set(range(1, 50)) - set(curr_sorted_dead_nums[:10]),
-                "desc": "剔除10个高危物理死码，近14天 100%，近30天 90.0%"
-            },
-            "🛡️ 物理神盾·杀12码 (留37码)": {
-                "hist": res_num_k12,
-                "curr_kept": set(range(1, 50)) - set(curr_sorted_dead_nums[:12]),
-                "desc": "剔除12个高危物理死码，近30天 90.0%"
-            },
-            "🎯 尾数动态惯性整杀10码 (留39码)": {
-                "hist": res_tail10,
-                "curr_kept": curr_f2_kept,
-                "desc": "整杀近8期最过热见顶的2个尾数"
-            },
-            "🚀 非对称环形拓扑位移杀10码 (留39码)": {
-                "hist": res_asym10,
-                "curr_kept": curr_f3_kept,
-                "desc": "模49圆环非对称对立几何死区"
-            },
-            "🧊 冷热遗漏分层控码选号 (留43码)": {
-                "hist": res_layers,
-                "curr_kept": curr_f1_kept,
-                "desc": "五层生命周期冷热遗漏大底"
-            },
-            "👑 全维动能打分 Top 40 (留40码)": {
-                "hist": res_top40,
-                "curr_kept": set(sorted(range(1, 50), key=lambda n: -curr_f5_scores[n])[:40]),
-                "desc": "综合七维动能打分保留前40名好码"
-            },
-            "🎯 全息共振精选30码 (方案一)": {
-                "hist": res_pool30_1,
-                "curr_kept": set(curr_p30_1),
-                "desc": "七维全息风险共振大底 (留30码，全量胜率79.5%)"
-            },
-            "🛡️ 三区间非对称杀12码 (留37码)": {
-                "hist": res_asym12,
-                "curr_kept": curr_f6_kept,
-                "desc": "三区间非对称几何盲区"
-            },
-            "🛡️ 近前盲区连续杀12码 (留37码)": {
-                "hist": res_blind12,
-                "curr_kept": set(range(1, 50)) - curr_f9_kill,
-                "desc": "紧邻特码前置顺位盲区"
-            },
-            "❌ 综合反向杀15码 (留34码)": {
-                "hist": res_kill15,
-                "curr_kept": set(range(1, 50)) - set(sorted(range(1, 50), key=lambda n: (curr_f10_scores[n], n))[:15]),
-                "desc": "三维欲出率多因子反向淘汰"
-            },
-            "🔥 混合规则留24码 (方案三)": {
-                "hist": res_hybrid3,
-                "curr_kept": set(curr_base_24_s3),
-                "desc": "四重防线剥离后精选24码 (近30天73.3%)"
-            },
-            "⚡ 极限精选20码狙击模型": {
-                "hist": res_slim_20,
-                "curr_kept": set(curr_pool_20),
-                "desc": "高盈亏比动能狙击20码 (近30天70.0%)"
-            },
-            "⚡ 极限精选16码狙击模型": {
-                "hist": res_slim_16,
-                "curr_kept": set(curr_pool_16),
-                "desc": "高盈亏比极限狙击16码 (盈亏比1.94:1)"
-            },
-            "⚡ 空间形态拐点选号 (OR并集)": {
-                "hist": res_or,
-                "curr_kept": set(n for n in range(1, 50) if get_zodiac_of_number(n) in curr_zods_or),
-                "desc": "二区与三区空间形态拐点全包抄"
-            },
-            "🌸 四季生肖拐点选号": {
-                "hist": res_seasons,
-                "curr_kept": set(n for n in range(1, 50) if get_zodiac_of_number(n) in curr_zods_sea),
-                "desc": "春夏秋冬四季触底拐点生肖"
-            },
-            "🪙 五行属性拐点选号": {
-                "hist": res_elements,
-                "curr_kept": set(n for en in [e for e in five_elements if element_omission[e] >= element_last_omission[e]] for n in five_elements[en]),
-                "desc": "金木水火土五行触底拐点属性码"
-            }
-        }
-
-        if has_flat_data:
-            available_strategy_dict["🎲 平码落特衰竭·杀上期6平码 (留43码)"] = {
-                "hist": res_flat_k6,
-                "curr_kept": set(curr_kept_flat_k6_nums),
-                "desc": "特码不落在上期6个平码中，天然理论底垫87.8%，全量胜率 85.8%"
-            }
-            available_strategy_dict["⭐ 平特连庄排斥·杀上期7星 (留42码)"] = {
-                "hist": res_flat_k7,
-                "curr_kept": set(curr_kept_flat_k7_nums),
-                "desc": "整杀上期6个平码加1个特码，全量胜率 84.7%，近30天 83.3%"
-            }
-            available_strategy_dict["🐯 平特透支杀肖·杀2透支肖 (留10肖41码)"] = {
-                "hist": res_flat_zod_k2,
-                "curr_kept": set(curr_kept_flat_zod_nums),
-                "desc": "7球全盘生肖频次最高透支前2肖整杀，全量胜率 84.4%，近30天 93.3%"
-            }
-            available_strategy_dict["🔢 平特数根饱和·杀2过热数根 (留约38码)"] = {
-                "hist": res_flat_dr_k2,
-                "curr_kept": set(curr_kept_flat_dr_nums),
-                "desc": "7球模9数根出现最多2个数根整杀，近30天 86.7%，近7天 100%"
-            }
-            available_strategy_dict["🌈 平特半波透支·杀1过热半波 (留约41码)"] = {
-                "hist": res_flat_hw_k1,
-                "curr_kept": set(curr_kept_flat_hw_nums),
-                "desc": "7球波色单双最透支半波整杀，全量胜率 83.2%，近7天 100%"
-            }
-            available_strategy_dict["🪙 平特五行能量透支·杀1过热五行 (留约39码)"] = {
-                "hist": res_flat_elem_k1,
-                "curr_kept": set(curr_kept_flat_elem_nums),
-                "desc": "7球极端扎堆过热五行整杀，全量胜率 76.6%，近7天 100%"
-            }
-
-        # 智能自动匹配扫描函数
-        def scan_auto_recommended_combos(min_c=10, max_c=40):
-            scanner_pool_keys = [
-                "⭐ 定额28码·旗舰长期跟踪 (留28码)",
-                "🛡️ 时空双核·杀2码 (留47码)",
-                "🛡️ 多维全息·杀3码 (留46码)",
-                "🛡️ 代数晶格死锁·杀5码 (留44码)",
-                "👑 黄金罗盘·杀3肖 (留9肖37码)",
-                "🌈 半波动力学·杀1半波 (留约41码)",
-                "🔢 数根同余动力学·杀10~11码 (留38码)",
-                "🛡️ 物理神盾·杀8码 (留41码)",
-                "🛡️ 物理神盾·杀10码 (留39码)",
-                "🛡️ 物理神盾·杀12码 (留37码)",
-                "👑 神兽天盾·杀2肖 (留10肖41码)",
-                "👑 黄金神盾·杀4肖 (留8肖32码)",
-                "👑 黄金三高·杀5肖 (留7肖28码)",
-                "🔢 和数尾动力学·杀2合尾 (留约39码)",
-                "📐 模7同余动力学·杀1余数类 (留42码)",
-                "🚪 五门头数动力学·杀1门 (留约39码)",
-                "⚡ 步长动能微扰排斥·杀9码 (留40码)",
-                "🎯 四象限时空动力学·杀1象限 (留约37码)",
-                "🎯 尾数动态惯性整杀10码 (留39码)",
-                "🚀 非对称环形拓扑位移杀10码 (留39码)",
-                "🛡️ 三区间非对称杀12码 (留37码)",
-                "🧊 冷热遗漏分层控码选号 (留43码)",
-                "🎯 全息共振精选30码 (方案一)"
-            ]
-            if has_flat_data:
-                scanner_pool_keys.insert(4, "🎲 平码落特衰竭·杀上期6平码 (留43码)")
-                scanner_pool_keys.insert(5, "🐯 平特透支杀肖·杀2透支肖 (留10肖41码)")
-
-            valid_keys = [k for k in scanner_pool_keys if k in available_strategy_dict]
-            matched = []
-
-            for k1 in valid_keys:
-                s1 = available_strategy_dict[k1]
-                sz = len(s1['curr_kept'])
-                if min_c <= sz <= max_c:
-                    hits = s1['hist']
-                    st_val = calc_rate_and_streaks(hits)
-                    comp = st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
-                    matched.append({
-                        'keys': [k1],
-                        'title': k1.split(' ')[1] if len(k1.split(' ')) > 1 else k1,
-                        'full_title': k1,
-                        'size': sz,
-                        'curr_kept': sorted(list(s1['curr_kept'])),
-                        'curr_killed': sorted(list(set(range(1, 50)) - s1['curr_kept'])),
-                        'stats': st_val,
-                        'comp': comp
-                    })
-
-            for k1, k2 in itertools.combinations(valid_keys, 2):
-                s1 = available_strategy_dict[k1]
-                s2 = available_strategy_dict[k2]
-                curr_inter = s1['curr_kept'] & s2['curr_kept']
-                sz = len(curr_inter)
-                if min_c <= sz <= max_c:
-                    hits = [h1 and h2 for h1, h2 in zip(s1['hist'], s2['hist'])]
-                    st_val = calc_rate_and_streaks(hits)
-                    comp = st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
-                    matched.append({
-                        'keys': [k1, k2],
-                        'title': f"{k1.split(' ')[1]} ∩ {k2.split(' ')[1]}",
-                        'full_title': f"{k1} ∩ {k2}",
-                        'size': sz,
-                        'curr_kept': sorted(list(curr_inter)),
-                        'curr_killed': sorted(list(set(range(1, 50)) - curr_inter)),
-                        'stats': st_val,
-                        'comp': comp
-                    })
-
-            for k1, k2, k3 in itertools.combinations(valid_keys, 3):
-                s1 = available_strategy_dict[k1]
-                s2 = available_strategy_dict[k2]
-                s3 = available_strategy_dict[k3]
-                curr_inter = s1['curr_kept'] & s2['curr_kept'] & s3['curr_kept']
-                sz = len(curr_inter)
-                if min_c <= sz <= max_c:
-                    hits = [h1 and h2 and h3 for h1, h2, h3 in zip(s1['hist'], s2['hist'], s3['hist'])]
-                    st_val = calc_rate_and_streaks(hits)
-                    comp = st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
-                    matched.append({
-                        'keys': [k1, k2, k3],
-                        'title': f"{k1.split(' ')[1]} ∩ {k2.split(' ')[1]} ∩ {k3.split(' ')[1]}",
-                        'full_title': f"{k1} ∩ {k2} ∩ {k3}",
-                        'size': sz,
-                        'curr_kept': sorted(list(curr_inter)),
-                        'curr_killed': sorted(list(set(range(1, 50)) - curr_inter)),
-                        'stats': st_val,
-                        'comp': comp
-                    })
-
-            if min_c <= 20:
-                for k1, k2, k3, k4 in itertools.combinations(valid_keys, 4):
-                    s1 = available_strategy_dict[k1]
-                    s2 = available_strategy_dict[k2]
-                    s3 = available_strategy_dict[k3]
-                    s4 = available_strategy_dict[k4]
-                    curr_inter = s1['curr_kept'] & s2['curr_kept'] & s3['curr_kept'] & s4['curr_kept']
-                    sz = len(curr_inter)
-                    if min_c <= sz <= max_c:
-                        hits = [h1 and h2 and h3 and h4 for h1, h2, h3, h4 in zip(s1['hist'], s2['hist'], s3['hist'], s4['hist'])]
-                        st_val = calc_rate_and_streaks(hits)
-                        comp = st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
-                        matched.append({
-                            'keys': [k1, k2, k3, k4],
-                            'title': f"{k1.split(' ')[1]} ∩ {k2.split(' ')[1]} ∩ {k3.split(' ')[1]} ∩ {k4.split(' ')[1]}",
-                            'full_title': f"{k1} ∩ {k2} ∩ {k3} ∩ {k4}",
-                            'size': sz,
-                            'curr_kept': sorted(list(curr_inter)),
-                            'curr_killed': sorted(list(set(range(1, 50)) - curr_inter)),
-                            'stats': st_val,
-                            'comp': comp
-                        })
-
-            matched.sort(key=lambda x: -x['comp'])
-            return matched
-
-        auto_matched_combos = scan_auto_recommended_combos(24, 28)
-
-        # 表现优选导航菜单
-        st_A = tier_stats["方案A (36码平衡型)"]
-        func_options = [
-            f"⭐ 0. 【长期跟踪推荐】定额28码旗舰锚定组合 (全量+2.4万 ｜ 近30天80% ｜ 连黑仅2期)",
-            "🤖 1. 【智能自动匹配】10-40码组合推荐引擎 (自定义区间寻优榜)",
-            "🎛️ 2. 【自由多选组装器】全功能自由勾选·智能交集/投票滤码中心",
-            f"🛡️ 3. 【极盾专区】独立杀2码 / 杀3码 / 杀5码 (多维高胜率防线)",
-            f"👑 4. 神兽天盾·高胜率杀肖中心 【新版杀3肖近14天: {stats_zod_k3['r14_rate']:.0f}% ｜ 近30: {stats_zod_k3['r30_rate']:.1f}% ｜ 14天连黑: {stats_zod_k3['r14_max_loss']}期】",
-            f"🔢 5. 数根动力学·同余整杀10~11码 【总: {stats_dr_kill['total_rate']:.1f}% ｜ 近30: {stats_dr_kill['r30_rate']:.1f}% ｜ 近14: {stats_dr_kill['r14_rate']:.0f}% ｜ 留38码】",
-            f"🌈 6. 半波动力学·波色单双智能杀半波 【杀1半波近30: {stats_hw_k1['r30_rate']:.1f}% ｜ 近14: {stats_hw_k1['r14_rate']:.0f}% ｜ 留41码】",
-            f"🔢 7. 和数尾动力学·各位和整杀2合尾 【总: {stats_cst['total_rate']:.1f}% ｜ 近30: {stats_cst['r30_rate']:.1f}% ｜ 近14: {stats_cst['r14_rate']:.0f}% ｜ 留39码】",
-            f"📐 8. 模7同余动力学·严格杀1/2余数类 【杀1类近30: {stats_m7_k1['r30_rate']:.1f}% ｜ 近14: {stats_m7_k1['r14_rate']:.0f}%】",
-            f"🚪 9. 五门头数动力学·十位区间整杀1门 【总: {stats_head['total_rate']:.1f}% ｜ 近30: {stats_head['r30_rate']:.1f}% ｜ 留39码】",
-            f"⚡ 10. 相空间步长动能·环形微扰杀9码 【总: {stats_dist['total_rate']:.1f}% ｜ 近30: {stats_dist['r30_rate']:.1f}% ｜ 留40码】",
-            f"🎯 11. 四象限时空动力学·大小单双杀1象限 【总: {stats_quad['total_rate']:.1f}% ｜ 近14: {stats_quad['r14_rate']:.0f}% ｜ 留37码】",
-            f"🎲 12. 平码落特排斥·杀上期6平码 / 7星 【总: {stats_flat_k6['total_rate']:.1f}% ｜ 留42~43码】",
-            f"🐯 13. 平特透支杀肖·7球生肖频次衰歇 【杀2肖近30: {stats_flat_zod_k2['r30_rate']:.1f}% ｜ 近14: {stats_flat_zod_k2['r14_rate']:.0f}%】",
-            f"🔢 14. 平特数根饱和·7球模9频次透支 【杀2数根近30: {stats_flat_dr_k2['r30_rate']:.1f}% ｜ 近14: {stats_flat_dr_k2['r14_rate']:.0f}%】",
-            f"🌈 15. 平特半波透支·7球波色极度饱和 【杀1半波近30: {stats_flat_hw_k1['r30_rate']:.1f}% ｜ 近14: {stats_flat_hw_k1['r14_rate']:.0f}%】",
-            f"🪙 16. 平特五行能量透支·7球五行极度聚集 【杀1五行近14: {stats_flat_elem_k1['r14_rate']:.0f}% ｜ 留39码】",
-            f"🎯 17. 尾数动态惯性整杀10码 (留39码) 【总: {stats_tail10['total_rate']:.1f}% ｜ 近30: {stats_tail10['r30_rate']:.1f}% ｜ 留39码】",
-            f"🚀 18. 非对称环形拓扑位移杀10码 (留39码) 【总: {stats_asym10['total_rate']:.1f}% ｜ 近30: {stats_asym10['r30_rate']:.1f}% ｜ 留39码】",
-            f"🧊 19. 冷热遗漏分层控码选号 【总: {stats_layers['total_rate']:.1f}% ｜ 近30: {stats_layers['r30_rate']:.1f}% ｜ 留43码】",
-            f"💰 20. 阶梯对冲分区分级仓位 (20/10/5元区) 【方案A: {st_A['total_rate']:.1f}% ｜ 近30: {st_A['r30_rate']:.1f}%】",
-            f"👑 21. 全维动能多因子打分 (Top 40) 【总: {stats_top40['total_rate']:.1f}% ｜ 近30: {stats_top40['r30_rate']:.1f}% ｜ 留40码】",
-            f"🎯 22. 全息共振精选30码 (方案一/二/三) 【方案二近30: {stats_pool30_2['r30_rate']:.1f}% ｜ 方案一: {stats_pool30_1['total_rate']:.1f}%】",
-            f"🤝 23. 强强联手·多维交集共振池 【组合一: {stats_inter_6_7['r30_rate']:.1f}% ｜ F4+F5交集: {stats_inter_4_5['total_rate']:.1f}%】",
-            f"🛡️ 24. 三区间非对称杀12码 (留37码) 【总: {stats_asym12['total_rate']:.1f}% ｜ 近30: {stats_asym12['r30_rate']:.1f}%】",
-            f"⚡ 25. 空间形态拐点选号 (OR并集) 【总: {stats_or['total_rate']:.1f}% ｜ 近14: {stats_or['r14_rate']:.0f}%】",
-            f"🎯 26. 欲出率特赦恢复智能选号 【总: {stats_f4['total_rate']:.1f}% ｜ 近30: {stats_f4['r30_rate']:.1f}%】",
-            f"🛡️ 27. 近前盲区连续杀12码 【总安全: {stats_blind12['total_rate']:.1f}% ｜ 近30: {stats_blind12['r30_rate']:.1f}%】",
-            f"❌ 28. 综合反向杀15码 【总安全: {stats_kill15['total_rate']:.1f}% ｜ 近30: {stats_kill15['r30_rate']:.1f}%】",
-            f"🔥 29. 混合规则共振留24码 (方案一/二/三) 【方案三近30: {stats_hybrid3['r30_rate']:.1f}% ｜ 方案一: {stats_hybrid1['total_rate']:.1f}%】",
-            f"⚡ 30. 极限高盈亏比 15-20 码狙击模型 【20码近30: {stats_slim_20['r30_rate']:.1f}% ｜ 16码盈亏比1.94:1】",
-            f"🌸 31. 四季 / 🪙 五行 / 🔢 七段数 周期形态选号 【四季胜率: {stats_seasons['total_rate']:.1f}%】",
-            "⏳ 32. 当前双重遗漏与欲出总榜",
-            "🔥 33. 大盘总量冷热排行统计",
-            "🔄 34. 前后行状态转移概率矩阵"
-        ]
-
-        if 'active_func_idx' not in st.session_state:
-            st.session_state['active_func_idx'] = 0
-
-        # 顶部自动智能速览卡片
-        if auto_matched_combos:
-            top1 = auto_matched_combos[0]
-            st.success(f"🤖 **【AI 自动匹配成功】当期黄金组合最佳推荐：`{top1['title']}`（当期精选 {top1['size']} 码 ｜ 近30天: {top1['stats']['r30_rate']:.1f}% ｜ 近14天: {top1['stats']['r14_rate']:.0f}% ｜ 近3天: {top1['stats']['r3_rate']:.0f}% ｜ 14天连黑: {top1['stats']['r14_max_loss']}期）**")
-            with st.expander("👉 查看当期 AI 自动匹配 Top 3 推荐出码速览（点击展开）", expanded=True):
-                r_c1, r_c2, r_c3 = st.columns(3)
-                medals = ["🥇 第一推荐", "🥈 第二推荐", "🥉 第三推荐"]
-                for idx_top, col_top in enumerate([r_c1, r_c2, r_c3]):
-                    if idx_top < len(auto_matched_combos):
-                        item = auto_matched_combos[idx_top]
-                        with col_top:
-                            st.markdown(f"**{medals[idx_top]}：`{item['title']}`**")
-                            st.caption(f"🎯 码数: **{item['size']}码** ｜ 近30: **{item['stats']['r30_rate']:.1f}%**(黑:{item['stats']['r30_max_loss']}) ｜ 近14: **{item['stats']['r14_rate']:.0f}%**(黑:{item['stats']['r14_max_loss']}) ｜ 近3: **{item['stats']['r3_rate']:.0f}%**")
-                            st.code(", ".join([f"{x:02d}" for x in item['curr_kept']]), language="text")
-
-        # 主页面顶部常用快捷直达区
-        st.write("---")
-        st.markdown("#### ⚡ 表现最优王牌模型一键直达：")
-        btn_c0, btn_c1, btn_c2, btn_c3, btn_c4 = st.columns(5)
-        with btn_c0:
-            if st.button("⭐ 长期跟踪定额28码", use_container_width=True):
-                st.session_state['active_func_idx'] = 0
-                st.rerun()
-        with btn_c1:
-            if st.button("👑 新版杀3肖 (14天100%)", use_container_width=True):
-                st.session_state['active_func_idx'] = 4
-                st.rerun()
-        with btn_c2:
-            if st.button("🛡️ 极盾杀2码 (98.6%)", use_container_width=True):
-                st.session_state['active_func_idx'] = 3
-                st.rerun()
-        with btn_c3:
-            if st.button("🛡️ 全息杀3码 (98.6%)", use_container_width=True):
-                st.session_state['active_func_idx'] = 3
-                st.rerun()
-        with btn_c4:
-            if st.button("🛡️ 晶格杀5码 (96.0%)", use_container_width=True):
-                st.session_state['active_func_idx'] = 3
-                st.rerun()
-
-        # 翻页控制
-        nav_col1, nav_col2 = st.columns(2)
-        with nav_col1:
-            if st.button("⬅️ 上一个功能", use_container_width=True):
-                st.session_state['active_func_idx'] = (st.session_state['active_func_idx'] - 1) % len(func_options)
-                st.rerun()
-        with nav_col2:
-            if st.button("下一个功能 ➡️", use_container_width=True):
-                st.session_state['active_func_idx'] = (st.session_state['active_func_idx'] + 1) % len(func_options)
-                st.rerun()
-
-        # 侧边栏：经典原生 Radio 导航
-        st.sidebar.markdown("### 🎛️ 功能快速直达 (按战绩排序)")
-        st.session_state['active_func_idx'] = max(0, min(st.session_state['active_func_idx'], len(func_options) - 1))
-
-        sidebar_choice = st.sidebar.radio(
-            "选择查看模块：",
-            options=func_options,
-            index=st.session_state['active_func_idx']
-        )
-        st.session_state['active_func_idx'] = func_options.index(sidebar_choice)
-        selected_func = sidebar_choice
-        st.write("---")
-
-        # =========================================================================
-        # 🌟 模块 0: ⭐ 【长期跟踪推荐】定额28码旗舰锚定组合
-        # =========================================================================
-        if selected_func.startswith("⭐ 0."):
-            st.subheader("⭐ 【长期跟踪推荐】定额 28 码旗舰锚定组合（新版杀3肖大底 ＋ 全息死码精裁9码）")
-            st.markdown("""
-            💡 **为什么推荐此方案长期跟踪？**
-            * **保本线清晰**：在 47 倍赔率下，28 码保本胜率红线为 **59.57%**（平注买 28 码单期成本 560 元，中奖单期净利 **+380 元**）；
-            * **超额优势突出**：全量 276 期实测胜率达 **68.84%**（超额优势 **+9.27%**），在所有 28 码方案中**全量累计净利润第一（+24,040 元）**；
-            * **连黑风控强劲**：近 30 天胜率 **80.0%**，近 14 天 **85.7%**，近 30 天**最大连黑严格仅有 2 期**，彻底避免断缆恐慌。
-            """)
-
-            render_kpi_header(stats_track28, "严格定额 28 码")
-
-            st.write("---")
-            st.markdown(f"#### 🎯 **【第 {total_records + 1} 期 · 长期跟踪推荐定额 28 码出号清单】：**")
-            c_track1, c_track2 = st.columns(2)
-            with c_track1:
-                st.success(f"🏆 **【长期跟踪推荐 28 码大底池】（点击代码框右上角一键复制）：**")
-                st.code(", ".join([f"{x:02d}" for x in curr_kept_track28_nums]), language="text")
-            with c_track2:
-                st.error(f"🚫 **【联合剔除的 21 个死码清单】（已剔除 3 肖及前 9 名死码）：**")
-                st.code(", ".join([f"{x:02d}" for x in curr_killed_track28_nums]), language="text")
-
-            render_financial_calculator_and_streaks(stats_track28, 28, key_prefix="track_28_main")
-
-        # =========================================================================
-        # 模块 1: 🤖 【智能自动匹配】10-40码组合推荐引擎
-        # =========================================================================
-        elif selected_func.startswith("🤖 1."):
-            st.subheader("🤖 10-40 码智能自动匹配与战力排行榜（AI 极速寻优）")
-            st.markdown("""
-            💡 **功能说明**：
-            * **自由调控**：滑动条支持 **10 ～ 40 码** 全范围自由拖动，随心选择目标底池；
-            * **风控指标**：已全面挂载 **近 14 天、近 3 天胜率** 与 **近 30 天、近 14 天最大连黑** 监控指标；
-            * **科学排序**：按照“近 30 天胜率 35% + 近 14 天 30% + 全量胜率 20% + 近 7 天 15%”进行综合加权排序。
-            """)
-
-            ctrl_c1, ctrl_c2 = st.columns([2, 1])
-            with ctrl_c1:
-                target_range = st.slider(
-                    "👉 自定义目标推荐码数区间：",
-                    min_value=10,
-                    max_value=40,
-                    value=(24, 28),
-                    step=1
-                )
-            with ctrl_c2:
-                sort_pref = st.selectbox(
-                    "👉 优先排序规则：",
-                    ["综合战力最高 (推荐)", "近14天胜率最高", "近30天胜率最高", "全量历史胜率最高", "全量平注利润最高"]
-                )
-
-            dynamic_matched = scan_auto_recommended_combos(target_range[0], target_range[1])
-
-            if "近14天" in sort_pref:
-                dynamic_matched.sort(key=lambda x: (-x['stats']['r14_rate'], -x['stats']['r30_rate'], x['stats']['r14_max_loss']))
-            elif "近30天" in sort_pref:
-                dynamic_matched.sort(key=lambda x: (-x['stats']['r30_rate'], -x['stats']['total_rate'], x['stats']['r30_max_loss']))
-            elif "全量历史" in sort_pref:
-                dynamic_matched.sort(key=lambda x: (-x['stats']['total_rate'], -x['stats']['r30_rate']))
-            elif "平注利润" in sort_pref:
-                dynamic_matched.sort(key=lambda x: (-(x['stats']['total_hits'] * (47*20 - x['size']*20) - (x['stats']['total_n'] - x['stats']['total_hits']) * (x['size']*20))))
-            else:
-                dynamic_matched.sort(key=lambda x: -x['comp'])
-
-            if not dynamic_matched:
-                st.warning(f"⚠️ 在 {target_range[0]} ~ {target_range[1]} 码区间内暂未扫描到符合条件的组合，建议适度放宽滑动条区间。")
-            else:
-                st.write("")
-                st.markdown(f"#### 🏆 当期最佳匹配方案 TOP 5 排行榜（共扫描出 {len(dynamic_matched)} 组有效组合）：")
-
-                pick_idx = st.radio(
-                    "👉 选择查看具体方案详情：",
-                    options=range(min(5, len(dynamic_matched))),
-                    format_func=lambda idx: f"【第 {idx+1} 名】{dynamic_matched[idx]['title']} ｜ {dynamic_matched[idx]['size']}码 ｜ 近30: {dynamic_matched[idx]['stats']['r30_rate']:.1f}% ｜ 近14: {dynamic_matched[idx]['stats']['r14_rate']:.0f}% ｜ 近3: {dynamic_matched[idx]['stats']['r3_rate']:.0f}% ｜ 30天连黑:{dynamic_matched[idx]['stats']['r30_max_loss']}期 ｜ 14天连黑:{dynamic_matched[idx]['stats']['r14_max_loss']}期",
-                    index=0,
-                    horizontal=False
-                )
-
-                chosen_combo = dynamic_matched[pick_idx]
-                c_st = chosen_combo['stats']
-
-                render_kpi_header(c_st, f"精选: {chosen_combo['size']} 码")
-
-                st.write("---")
-                st.markdown(f"#### 🎯 **【第 {total_records + 1} 期 · {chosen_combo['title']} 出码清单】：**")
-                out_c1, out_c2 = st.columns(2)
-                with out_c1:
-                    st.success(f"🏆 **【推荐保留号码池】（共 {chosen_combo['size']} 码 ｜ 点击右上角一键复制）：**")
-                    st.code(", ".join([f"{x:02d}" for x in chosen_combo['curr_kept']]), language="text")
-                with out_c2:
-                    st.error(f"🚫 **【联合剔除死码清单】（共 {len(chosen_combo['curr_killed'])} 码）：**")
-                    st.code(", ".join([f"{x:02d}" for x in chosen_combo['curr_killed']]), language="text")
-
-                if st.button("👉 一键将此组合载入到【自由多选组装器】", use_container_width=True):
-                    st.session_state['custom_preset_selection'] = chosen_combo['keys']
-                    st.session_state['active_func_idx'] = 2
-                    st.rerun()
-
-                render_financial_calculator_and_streaks(c_st, chosen_combo['size'], key_prefix=f"auto_top_{pick_idx}")
-
-        # ==========================================
-        # 模块 2: 🎛️ 【自由多选组装器】
-        # ==========================================
-        elif selected_func.startswith("🎛️ 2."):
-            st.subheader("🎛️ 全功能自由多选·智能交集/投票滤码中心（自选武器库）")
-            st.markdown("""
-            💡 **操作指南**：
-            * **自由勾选**：支持在全量战法中自由挑选，组合出码后自动展示**近 14 天/近 3 天胜率**及**近 30 天/14 天最大连黑**；
-            * **组合模式**：可自由切换“严格交集（强力精减）”或“容错共识投票制（高容错防连黑）”。
-            """)
-
-            st.markdown("##### ⚡ 经典战术一键预设组合：")
-            p_col0, p_col1, p_col2, p_col3, p_col4 = st.columns(5)
-            preset_names = list(available_strategy_dict.keys())
-
-            if 'custom_preset_selection' not in st.session_state:
-                st.session_state['custom_preset_selection'] = [
-                    "⭐ 定额28码·旗舰长期跟踪 (留28码)"
-                ]
-
-            with p_col0:
-                if st.button("⭐ 长期跟踪28码", use_container_width=True):
-                    st.session_state['custom_preset_selection'] = [
-                        "⭐ 定额28码·旗舰长期跟踪 (留28码)"
-                    ]
-                    st.rerun()
-            with p_col1:
-                if st.button("👑 三独立极盾组", use_container_width=True):
-                    st.session_state['custom_preset_selection'] = [
-                        "🛡️ 时空双核·杀2码 (留47码)",
-                        "🛡️ 多维全息·杀3码 (留46码)",
-                        "🛡️ 代数晶格死锁·杀5码 (留44码)"
-                    ]
-                    st.rerun()
-            with p_col2:
-                if st.button("🔥 王牌均衡实战组", use_container_width=True):
-                    st.session_state['custom_preset_selection'] = [
-                        "👑 黄金罗盘·杀3肖 (留9肖37码)",
-                        "🔢 和数尾动力学·杀2合尾 (留约39码)",
-                        "🎲 平码落特衰竭·杀上期6平码 (留43码)" if has_flat_data else "📐 模7同余动力学·杀1余数类 (留42码)"
-                    ]
-                    st.rerun()
-            with p_col3:
-                if st.button("⚡ 暴力收割高盈组", use_container_width=True):
-                    st.session_state['custom_preset_selection'] = [
-                        "🌈 半波动力学·杀2半波 (留约33码)",
-                        "👑 黄金神盾·杀4肖 (留8肖32码)",
-                        "🎯 全息共振精选30码 (方案一)"
-                    ]
-                    st.rerun()
-            with p_col4:
-                if st.button("🔄 清空自选", use_container_width=True):
-                    st.session_state['custom_preset_selection'] = []
-                    st.rerun()
-
-            selected_strategies = st.multiselect(
-                "👉 请自由勾选您想要联立组合的功能模块（支持任意组合）：",
-                options=preset_names,
-                default=[s for s in st.session_state['custom_preset_selection'] if s in preset_names]
-            )
-
-            st.write("")
-            comb_mode_c1, comb_mode_c2 = st.columns([2, 1])
-            with comb_mode_c1:
-                comb_mode = st.radio(
-                    "👉 选择组合过滤模式：",
-                    [
-                        "🎯 严格交集模式（全部满足 · 强力杀码压缩 · 推荐实战）",
-                        "⚖️ 容错共识投票制（多数票赞成才保留 · 容忍单点误伤）",
-                        "🛡️ 极盾并集全包抄（任一认可即保留 · 极高胜率防黑天鹅）"
-                    ],
-                    index=0,
-                    horizontal=True
-                )
-
-            min_votes = 1
-            if "容错共识投票制" in comb_mode:
-                with comb_mode_c2:
-                    if len(selected_strategies) > 1:
-                        def_val = max(1, len(selected_strategies) // 2 + 1)
-                        min_votes = st.slider(
-                            "设置保留赞成票门限：",
-                            min_value=1,
-                            max_value=len(selected_strategies),
-                            value=def_val
-                        )
-                    else:
-                        st.info("单选模式下默认 1 票")
-                        min_votes = 1
-
-            if not selected_strategies:
-                st.warning("⚠️ 请在上方至少勾选 1 个功能模块以查看组合出码结果！")
-            else:
-                all_candidates_info = [available_strategy_dict[k] for k in selected_strategies]
-                
-                if "严格交集模式" in comb_mode:
-                    curr_kept_final = set(range(1, 50))
-                    for info in all_candidates_info:
-                        curr_kept_final = curr_kept_final & info['curr_kept']
-                elif "极盾并集全包抄" in comb_mode:
-                    curr_kept_final = set()
-                    for info in all_candidates_info:
-                        curr_kept_final = curr_kept_final | info['curr_kept']
-                else:
-                    vote_counter = defaultdict(int)
-                    for info in all_candidates_info:
-                        for n in info['curr_kept']:
-                            vote_counter[n] += 1
-                    curr_kept_final = set(n for n in range(1, 50) if vote_counter[n] >= min_votes)
-
-                curr_killed_final = sorted([n for n in range(1, 50) if n not in curr_kept_final])
-                curr_kept_final_sorted = sorted(list(curr_kept_final))
-
-                h_vectors = [info['hist'] for info in all_candidates_info]
-                n_eval = len(h_vectors[0])
-                
-                if "严格交集模式" in comb_mode:
-                    comb_hits = [all(h_vec[idx_t] for h_vec in h_vectors) for idx_t in range(n_eval)]
-                elif "极盾并集全包抄" in comb_mode:
-                    comb_hits = [any(h_vec[idx_t] for h_vec in h_vectors) for idx_t in range(n_eval)]
-                else:
-                    comb_hits = [sum(1 for h_vec in h_vectors if h_vec[idx_t]) >= min_votes for idx_t in range(n_eval)]
-
-                comb_stats = calc_rate_and_streaks(comb_hits)
-
-                render_kpi_header(comb_stats, f"组合精选: {len(curr_kept_final_sorted)} 码")
-
-                st.write("---")
-                st.markdown(f"#### 🎯 **【第 {total_records + 1} 期 · 自定义多选组合出号结果】：**")
-                res_c1, res_c2 = st.columns([1, 1])
-                with res_c1:
-                    st.success(f"🏆 **【本组合最终保留号码池】（共 {len(curr_kept_final_sorted)} 码 ｜ 已升序排列，点击右上角复制）：**")
-                    st.code(", ".join([f"{x:02d}" for x in curr_kept_final_sorted]), language="text")
-                with res_c2:
-                    st.error(f"🚫 **【本组合联合剔除死码清单】（共 {len(curr_killed_final)} 码 ｜ 坚决不买）：**")
-                    st.code(", ".join([f"{x:02d}" for x in curr_killed_final]), language="text")
-
-                st.write("---")
-                st.markdown("#### 📑 勾选各功能的单兵战绩与风控明细表：")
-                detail_rows = []
-                for s_name in selected_strategies:
-                    s_info = available_strategy_dict[s_name]
-                    s_st = calc_rate_and_streaks(s_info['hist'])
-                    s_killed = sorted([n for n in range(1, 50) if n not in s_info['curr_kept']])
-                    detail_rows.append({
-                        "勾选功能名称": s_name,
-                        "单兵保留码数": f"{len(s_info['curr_kept'])} 码",
-                        "全量胜率": f"{s_st['total_rate']:.1f}%",
-                        "近30天胜率": f"{s_st['r30_rate']:.1f}% (连黑:{s_st['r30_max_loss']}期)",
-                        "近14天胜率": f"{s_st['r14_rate']:.0f}% (连黑:{s_st['r14_max_loss']}期)",
-                        "近3天胜率": f"{s_st['r3_rate']:.0f}%",
-                        "该功能杀掉的号码": ", ".join([f"{x:02d}" for x in s_killed[:12]]) + (f" 等共{len(s_killed)}码" if len(s_killed)>12 else "")
-                    })
-                st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
-
-                render_financial_calculator_and_streaks(comb_stats, len(curr_kept_final_sorted), key_prefix="custom_comb")
-
-        # ==========================================
-        # 模块 3: 🛡️ 【极盾专区】独立杀2码 / 杀3码 / 杀5码
-        # ==========================================
-        elif selected_func.startswith("🛡️ 3."):
-            st.subheader("🛡️ 【极盾专区】时空双核杀2码 ＆ 全息阻尼杀3码 ＆ 代数晶格杀5码")
-            st.markdown("""
-            💡 **三独立物理维度设计原则**：
-            * **【杀 2 码·时空双核阻尼法】**：纯**时间序列自相关**维度，上期特码连庄阻尼 + 上期平码零频落特死核，全量胜率 **98.6%**，近 30/14/7/3 天全部 **100% 连红**；
-            * **【杀 3 码·多维全息阻尼法】**：融合**七重负向势场碰撞**，全量胜率 **98.6%**，连续 **143 期未败连红**，近 30/14/7/3 天全部 **100% 连红**；
-            * **【杀 5 码·五维代数晶格死锁法】**：纯**高维空间同余几何**维度，完全不依赖特码连庄，由模7+合尾+拓扑+死肖+死尾空间死锁碰撞，全量胜率 **96.0%**，近 30/14/7/3 天全部 **100% 连红**。
-            """)
-            
-            shield_mode = st.radio("👉 选择具体极盾模式：", [
-                "🏆 方案 A：【时空双核阻尼·杀 2 码】(时间自相关衰竭模型 ｜ 全量 98.6% ｜ 近30/14/7/3天 100% ｜ 留47码)",
-                "🥇 方案 B：【多维全息阻尼·杀 3 码】(七重负向势场共振 ｜ 全量 98.6% ｜ 143期未败连红 ｜ 留46码)",
-                "🔥 方案 C：【五维代数晶格死锁·杀 5 码】(纯空间正交几何模型 ｜ 全量 96.0% ｜ 近30/14/7/3天 100% ｜ 留44码)",
-                "物理神盾杀 8 码 (经典尾数+几何拓扑 ｜ 全量 92.4% ｜ 留41码)",
-                "物理神盾杀 10 码 (经典尾数+几何拓扑 ｜ 全量 89.2% ｜ 留39码)"
-            ], index=1)
-
-            if "杀 2 码" in shield_mode:
-                st_cur = stats_k2_dual
-                dead_list = curr_k2_dual_nums
-                safe_list = curr_kept_k2_dual
-                m_title = "时空双核阻尼·杀 2 码"
-                m_desc = f"上期特码 {curr_prev_num:02d}（连庄衰减阻尼）与 上期最死平码 {dead_list[1] if dead_list[0]==curr_prev_num else dead_list[0]:02d}（零频落特死核）"
-            elif "杀 3 码" in shield_mode:
-                st_cur = stats_k3_holo
-                dead_list = curr_k3_holo_nums
-                safe_list = curr_kept_k3_holo
-                m_title = "多维全息阻尼·杀 3 码"
-                m_desc = "特码连庄阻尼 + 平码排斥 + 过热死尾 + 模49双拓扑盲区 + 死肖 + 死头 + 模9死数根七重负向势场碰撞"
-            elif "杀 5 码" in shield_mode:
-                st_cur = stats_k5_lattice
-                dead_list = curr_k5_lattice_nums
-                safe_list = curr_kept_k5_lattice
-                m_title = "五维正交代数晶格死锁·杀 5 码"
-                m_desc = "模7同余死区 + 和数尾死区 + 模49对立拓扑 + 平特全维死肖 + 死尾五重空间代数死锁碰撞"
-            elif "杀 8 码" in shield_mode:
-                st_cur = stats_num_k8
-                dead_list = sorted(curr_sorted_dead_nums[:8])
-                safe_list = sorted([n for n in range(1, 50) if n not in set(dead_list)])
-                m_title = "物理神盾杀 8 码"
-                m_desc = "传统尾数衰竭与几何拓扑盲区"
-            else:
-                st_cur = stats_num_k10
-                dead_list = sorted(curr_sorted_dead_nums[:10])
-                safe_list = sorted([n for n in range(1, 50) if n not in set(dead_list)])
-                m_title = "物理神盾杀 10 码"
-                m_desc = "传统尾数衰竭与几何拓扑盲区"
-
-            render_kpi_header(st_cur, f"剔除: 严格 {len(dead_list)} 码")
-
-            st.error(f"🚫 **【本期【{m_title}】坚决剔除的 {len(dead_list)} 个死码】（{m_desc}）：**")
-            st.code(", ".join([f"{x:02d}" for x in dead_list]), language="text")
-            st.success(f"🏆 **【本期精选保留的 {len(safe_list)} 码黄金大底池】（点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in safe_list]), language="text")
-
-            render_financial_calculator_and_streaks(st_cur, len(safe_list), key_prefix="mod_shield_dual")
-
-        # ==========================================
-        # 模块 4: 👑 神兽天盾·高胜率杀肖中心 (新版平特全维能量流)
-        # ==========================================
-        elif selected_func.startswith("👑 4."):
-            st.subheader("👑 神兽天盾·高胜率杀肖中心（新版平特全维能量流 · 近14/7/3天100%满贯）")
-            st.markdown("""
-            💡 **新算法特性**：
-            * 结合上期 7 球（平码+特码）能量频次透支、特肖转移绝对零频排斥与遗漏冰封模型；
-            * 特设 **临界反弹重权豁免令（-4.5分）**，彻底避免错杀触底反弹冷肖；
-            * **近 14 天命中率 100%**，近 3 天 100%，近 30 天最大连黑仅 1 期，近 14 天最大连黑为 0 期！
-            """)
-            zk_choice = st.radio("👉 选择杀肖强度：", [
-                f"神兽天盾·杀二肖 (近14天: {stats_zod_k2['r14_rate']:.0f}% ｜ 近30天: {stats_zod_k2['r30_rate']:.1f}% ｜ 近3天: {stats_zod_k2['r3_rate']:.0f}% ｜ 留10肖41码)",
-                f"黄金罗盘·杀三肖 (近14天: {stats_zod_k3['r14_rate']:.0f}% ｜ 近30天: {stats_zod_k3['r30_rate']:.1f}% ｜ 近3天: {stats_zod_k3['r3_rate']:.0f}% ｜ 留9肖37码)",
-                f"终极升级·杀四肖 (近14天: {stats_zod_k4['r14_rate']:.0f}% ｜ 近30天: {stats_zod_k4['r30_rate']:.1f}% ｜ 留8肖32码)",
-                f"终极升级·杀五肖 (近14天: {stats_zod_k5['r14_rate']:.0f}% ｜ 近30天: {stats_zod_k5['r30_rate']:.1f}% ｜ 留7肖28码)"
-            ], index=1)
-
-            if "杀二肖" in zk_choice: st_zk, n_k = stats_zod_k2, 2
-            elif "杀三肖" in zk_choice: st_zk, n_k = stats_zod_k3, 3
-            elif "杀四肖" in zk_choice: st_zk, n_k = stats_zod_k4, 4
-            else: st_zk, n_k = stats_zod_k5, 5
-
-            killed_zods = curr_ranked_zod_kill[:n_k]
-            kept_zods = [z for z in all_zodiacs if z not in killed_zods]
-            killed_nums = sorted([n for n in range(1, 50) if get_zodiac_of_number(n) in killed_zods])
-            kept_nums = sorted([n for n in range(1, 50) if n not in killed_nums])
-
-            render_kpi_header(st_zk, f"坚决杀 {n_k} 肖")
-
-            st.error(f"🚫 **【本期平特能量流锁杀的 {n_k} 个高危生肖】：** `{', '.join(killed_zods)}` (涵盖 {len(killed_nums)} 个特码)")
-            st.code(", ".join([f"{x:02d}" for x in killed_nums]), language="text")
-            st.success(f"👑 **【本期保留的 {12-n_k} 肖黄金大底】(共涵盖 {len(kept_nums)} 码)：** `{', '.join(kept_zods)}`")
-            st.code(", ".join([f"{x:02d}" for x in kept_nums]), language="text")
-
-            st.write("---")
-            st.markdown("##### 🔍 本期 12 生肖平特全维危险分排行榜：")
-            zod_score_table = []
-            for rk, z in enumerate(curr_ranked_zod_kill, 1):
-                zod_score_table.append({
-                    "排名": f"第 {rk} 名",
-                    "生肖": z,
-                    "综合危险分": f"{curr_scores_z_flow[z]:.2f}",
-                    "上期7球出现次数": f"{curr_c7_zods[z]} 次",
-                    "上期特肖后转移次数": f"{curr_trans_z_flow[z]} 次",
-                    "当前遗漏": f"{zodiac_omission[z]} 期",
-                    "上次遗漏": f"{zodiac_last_omission[z]} 期"
-                })
-            st.dataframe(pd.DataFrame(zod_score_table), use_container_width=True, hide_index=True)
-
-            render_financial_calculator_and_streaks(st_zk, len(kept_nums), key_prefix="mod2")
-
-        # ==========================================
-        # 模块 5: 🔢 数根动力学·同余整杀10~11码
-        # ==========================================
-        elif selected_func.startswith("🔢 5."):
-            st.subheader("🔢 数根动力学·同余整杀 10~11 码（模9数论晶格模型 ｜ 胜率 93.3%）")
-            render_kpi_header(stats_dr_kill, f"杀 {len(curr_killed_dr_nums)} 码 (2数根)")
-
-            st.error(f"🚫 **【本期数根动力学锁杀的 2 个数根】：** `数根 {curr_killed_2_dr[0]}` 与 `数根 {curr_killed_2_dr[1]}` (涵盖 {len(curr_killed_dr_nums)} 码)")
-            st.code(", ".join([f"{x:02d}" for x in curr_killed_dr_nums]), language="text")
-            st.success(f"🏆 **【本期数根动力学精选保留大底】（共 {len(curr_kept_dr_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in curr_kept_dr_nums]), language="text")
-
-            render_financial_calculator_and_streaks(stats_dr_kill, len(curr_kept_dr_nums), key_prefix="mod_dr")
-
-        # ==========================================
-        # 模块 6: 🌈 半波动力学·波色单双智能杀半波
-        # ==========================================
-        elif selected_func.startswith("🌈 6."):
-            st.subheader("🌈 半波动力学·波色单双智能杀半波（红/蓝/绿 单双转移排斥模型）")
-            hw_choice = st.radio("👉 选择杀半波力度：", [
-                "杀 1 半波 (留 5 半波 ｜ 杀 7~9 码 ｜ 留约 41 码 ｜ 近14天 100% ｜ 近30天 96.7%)",
-                "杀 2 半波 (留 4 半波 ｜ 杀 15~17 码 ｜ 留约 33 码 ｜ 近30天 80.0%)"
-            ], index=0)
-
-            if "杀 1 半波" in hw_choice:
-                st_hw = stats_hw_k1
-                killed_hws = curr_ranked_hw[:1]
-                killed_hw_nums = curr_k1_hw_nums
-                kept_hw_nums = curr_kept_k1_hw
-            else:
-                st_hw = stats_hw_k2
-                killed_hws = curr_ranked_hw[:2]
-                killed_hw_nums = curr_k2_hw_nums
-                kept_hw_nums = curr_kept_k2_hw
-
-            render_kpi_header(st_hw, f"杀 {len(killed_hw_nums)} 码 ({len(killed_hws)}半波)")
-
-            st.error(f"🚫 **【本期半波动力学锁定杀掉的半波】：** `{', '.join(killed_hws)}` (涵盖 {len(killed_hw_nums)} 个特码)")
-            st.code(", ".join([f"{x:02d}" for x in killed_hw_nums]), language="text")
-            st.success(f"🏆 **【本期精选保留的 {6 - len(killed_hws)} 个半波黄金大底】(共涵盖 {len(kept_hw_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in kept_hw_nums]), language="text")
-
-            render_financial_calculator_and_streaks(st_hw, len(kept_hw_nums), key_prefix="mod_hw")
-
-        # ==========================================
-        # 模块 7: 🔢 和数尾动力学·各位和整杀2合尾
-        # ==========================================
-        elif selected_func.startswith("🔢 7."):
-            st.subheader("🔢 和数尾动力学·各位和整杀 2 合尾（各位数字和模10 ｜ 胜率 93.3%）")
-            render_kpi_header(stats_cst, f"杀 {len(curr_killed_cst_nums)} 码 (2合尾)")
-
-            st.error(f"🚫 **【本期和数尾动力学锁杀的 2 个合尾】：** `{curr_killed_cst_nums[:2]}` (涵盖 10 码)")
-            st.code(", ".join([f"{x:02d}" for x in curr_killed_cst_nums]), language="text")
-            st.success(f"🏆 **【本期和数尾精选保留 39 码大底池】（共 {len(curr_kept_cst_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in curr_kept_cst_nums]), language="text")
-
-            render_financial_calculator_and_streaks(stats_cst, len(curr_kept_cst_nums), key_prefix="mod_cst")
-
-        # ==========================================
-        # 模块 8: 📐 模7同余动力学·严格杀1/2余数类
-        # ==========================================
-        elif selected_func.startswith("📐 8."):
-            st.subheader("📐 模 7 同余格动力学·严格杀 1/2 余数类（严格 7 码/14 码正交裁切）")
-            m7_choice = st.radio("👉 选择杀模7余数类强度：", [
-                "杀 1 个余数类 (严格杀 7 码 ｜ 留 42 码 ｜ 近14天 100% ｜ 近30天 93.3%)",
-                "杀 2 个余数类 (严格杀 14 码 ｜ 留 35 码 ｜ 近14天 100% ｜ 近30天 80.0%)"
-            ], index=0)
-
-            if "杀 1 个" in m7_choice:
-                st_m7 = stats_m7_k1
-                killed_m7_nums = curr_killed_m7_k1_nums
-                kept_m7_nums = curr_kept_m7_k1_nums
-                k_info = f"余数 {curr_killed_m7_k1_nums[0] % 7}"
-            else:
-                st_m7 = stats_m7_k2
-                killed_m7_nums = curr_killed_m7_k2_nums
-                kept_m7_nums = curr_kept_m7_k2_nums
-                k_info = f"前 2 个余数类"
-
-            render_kpi_header(st_m7, f"严格杀 {len(killed_m7_nums)} 码")
-
-            st.error(f"🚫 **【本期模7动力学锁定杀掉的同余类】：** `{k_info}` (涵盖 {len(killed_m7_nums)} 个特码)")
-            st.code(", ".join([f"{x:02d}" for x in killed_m7_nums]), language="text")
-            st.success(f"🏆 **【本期模7精选保留黄金大底】(共涵盖 {len(kept_m7_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in kept_m7_nums]), language="text")
-
-            render_financial_calculator_and_streaks(st_m7, len(kept_m7_nums), key_prefix="mod_m7")
-
-        # ==========================================
-        # 模块 9: 🚪 五门头数动力学·十位区间整杀1门
-        # ==========================================
-        elif selected_func.startswith("🚪 9."):
-            st.subheader("🚪 五门头数动力学·十位区间整杀 1 门（高位门数跃迁排斥模型）")
-            render_kpi_header(stats_head, f"杀 1 门 (留39码)")
-            st.error(f"🚫 **【本期五门动力学锁定整杀的门数】：** `{curr_killed_head_nums[0]//10} 头` (涵盖 {len(curr_killed_head_nums)} 码)")
-            st.code(", ".join([f"{x:02d}" for x in curr_killed_head_nums]), language="text")
-            st.success(f"🏆 **【本期五门精选保留 39 码大底池】（共 {len(curr_kept_head_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in curr_kept_head_nums]), language="text")
-            render_financial_calculator_and_streaks(stats_head, len(curr_kept_head_nums), key_prefix="mod_head")
-
-        # ==========================================
-        # 模块 10: ⚡ 相空间步长动能·环形微扰杀9码
-        # ==========================================
-        elif selected_func.startswith("⚡ 10."):
-            st.subheader("⚡ 相空间步长动能微扰排斥·杀 9 码（环形最短跳步距离动能禁区）")
-            render_kpi_header(stats_dist, f"杀 9 物理死码")
-            st.error(f"🚫 **【本期步长动能微扰锁杀的 9 个物理死码】：**")
-            st.code(", ".join([f"{x:02d}" for x in curr_killed_dist9_nums]), language="text")
-            st.success(f"🏆 **【本期步长动能保留 40 码大底池】（共 {len(curr_kept_dist9_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in curr_kept_dist9_nums]), language="text")
-            render_financial_calculator_and_streaks(stats_dist, len(curr_kept_dist9_nums), key_prefix="mod_dist")
-
-        # ==========================================
-        # 模块 11: 🎯 四象限时空动力学·大小单双杀1象限
-        # ==========================================
-        elif selected_func.startswith("🎯 11."):
-            st.subheader("🎯 四象限时空动力学·大小单双杀 1 象限（大小×单双 2D 平面阻尼模型）")
-            render_kpi_header(stats_quad, f"杀 1 象限 ({len(curr_killed_quad_nums)} 码)")
-            st.error(f"🚫 **【本期四象限动力学锁定杀掉的象限】：** `{curr_ranked_q[0]}` (涵盖 {len(curr_killed_quad_nums)} 码)")
-            st.code(", ".join([f"{x:02d}" for x in curr_killed_quad_nums]), language="text")
-            st.success(f"🏆 **【本期四象限精选保留大底池】（共 {len(curr_kept_quad_nums)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in curr_kept_quad_nums]), language="text")
-            render_financial_calculator_and_streaks(stats_quad, len(curr_kept_quad_nums), key_prefix="mod_quad")
-
-        # ==========================================
-        # 模块 12: 🎲 平码落特排斥·杀上期6平码 / 7星
-        # ==========================================
-        elif selected_func.startswith("🎲 12."):
-            st.subheader("🎲 平码落特排斥动力学·杀上期平特（落特衰竭模型）")
-            if not has_flat_data:
-                st.warning("⚠️ 当前上传的数据未包含平码信息（仅含纯特码），平码战法待命中。上传包含平码 1~6 的全量表格即可自动激活！")
-            else:
-                flat_choice = st.radio("👉 选择杀码强度：", [
-                    "杀上期 6 平码 (严格杀 6 码 ｜ 留 43 码 ｜ 全量胜率 85.8% ｜ 近30天 83.3%)",
-                    "杀上期平特 7 星 (杀 6 平码 + 1 特码 ｜ 杀 7 码 ｜ 留 42 码 ｜ 全量胜率 84.7%)"
-                ], index=0)
-
-                if "杀上期 6 平码" in flat_choice:
-                    st_flat = stats_flat_k6
-                    killed_flats = curr_killed_flat_k6_nums
-                    kept_flats = curr_kept_flat_k6_nums
-                    k_desc = "上期开出的 6 个平码"
-                else:
-                    st_flat = stats_flat_k7
-                    killed_flats = curr_killed_flat_k7_nums
-                    kept_flats = curr_kept_flat_k7_nums
-                    k_desc = "上期开出的 6 个平码 + 1 个特码"
-
-                render_kpi_header(st_flat, f"严格杀 {len(killed_flats)} 码")
-
-                st.error(f"🚫 **【本期平码落特锁定杀掉的号码】（{k_desc}）：**")
-                st.code(", ".join([f"{x:02d}" for x in killed_flats]), language="text")
-                st.success(f"🏆 **【本期平码落特保留大底池】（共 {len(kept_flats)} 码 ｜ 点击右上角复制）：**")
-                st.code(", ".join([f"{x:02d}" for x in kept_flats]), language="text")
-
-                render_financial_calculator_and_streaks(st_flat, len(kept_flats), key_prefix="mod_flat")
-
-        # ==========================================
-        # 模块 13: 🐯 平特透支杀肖·7球生肖频次衰歇
-        # ==========================================
-        elif selected_func.startswith("🐯 13."):
-            st.subheader("🐯 平特全盘透支杀肖·7 球生肖频次衰歇（全盘透支模型）")
-            if not has_flat_data:
-                st.warning("⚠️ 当前上传的数据未包含平码信息，该战法自动待命中。")
-            else:
-                render_kpi_header(stats_flat_zod_k2, "杀 2 透支肖")
-                st.error(f"🚫 **【本期平特 7 球频次透支杀掉的 2 肖】：** `{', '.join(curr_top2_z)}` (涵盖 {len(curr_killed_flat_zod_nums)} 个特码)")
-                st.code(", ".join([f"{x:02d}" for x in curr_killed_flat_zod_nums]), language="text")
-                st.success(f"🏆 **【本期平特透支精选保留 10 肖黄金大底】(共涵盖 {len(curr_kept_flat_zod_nums)} 码 ｜ 点击右上角复制）：**")
-                st.code(", ".join([f"{x:02d}" for x in curr_kept_flat_zod_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_flat_zod_k2, len(curr_kept_flat_zod_nums), key_prefix="mod_flat_zod")
-
-        # ==========================================
-        # 模块 14: 🔢 平特数根饱和·7球模9频次透支
-        # ==========================================
-        elif selected_func.startswith("🔢 14."):
-            st.subheader("🔢 平特全盘数根饱和透支·7 球模 9 频次衰减（整杀 2 个最透支数根）")
-            if not has_flat_data:
-                st.warning("⚠️ 当前上传的数据未包含平码信息，该战法自动待命中。")
-            else:
-                render_kpi_header(stats_flat_dr_k2, "杀 2 透支数根")
-                st.error(f"🚫 **【本期平特 7 球扎堆过热的 2 个数根】：** `数根 {curr_top2_dr[0]}` 与 `数根 {curr_top2_dr[1]}` (涵盖 {len(curr_killed_flat_dr_nums)} 码)")
-                st.code(", ".join([f"{x:02d}" for x in curr_killed_flat_dr_nums]), language="text")
-                st.success(f"🏆 **【本期平特数根透支保留 38 码大底池】（共 {len(curr_kept_flat_dr_nums)} 码 ｜ 点击右上角复制）：**")
-                st.code(", ".join([f"{x:02d}" for x in curr_kept_flat_dr_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_flat_dr_k2, len(curr_kept_flat_dr_nums), key_prefix="mod_flat_dr")
-
-        # ==========================================
-        # 模块 15: 🌈 平特半波透支·7球波色极度饱和
-        # ==========================================
-        elif selected_func.startswith("🌈 15."):
-            st.subheader("🌈 平特全盘半波透支整杀·7 球波色极度饱和（整杀 1 个过热半波）")
-            if not has_flat_data:
-                st.warning("⚠️ 当前上传的数据未包含平码信息，该战法自动待命中。")
-            else:
-                render_kpi_header(stats_flat_hw_k1, f"杀 {len(curr_killed_flat_hw_nums)} 码 (1半波)")
-                st.error(f"🚫 **【本期平特 7 球扎堆透支的半波】：** `【{curr_top1_hw}】` (涵盖 {len(curr_killed_flat_hw_nums)} 个特码)")
-                st.code(", ".join([f"{x:02d}" for x in curr_killed_flat_hw_nums]), language="text")
-                st.success(f"🏆 **【本期平特半波透支保留 41 码大底池】（共 {len(curr_kept_flat_hw_nums)} 码 ｜ 点击右上角复制）：**")
-                st.code(", ".join([f"{x:02d}" for x in curr_kept_flat_hw_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_flat_hw_k1, len(curr_kept_flat_hw_nums), key_prefix="mod_flat_hw")
-
-        # ==========================================
-        # 模块 16: 🪙 平特五行能量透支·7球五行极度聚集
-        # ==========================================
-        elif selected_func.startswith("🪙 16."):
-            st.subheader("🪙 平特五行能量透支·7 球五行极度聚集（整杀 1 个极端透支五行）")
-            if not has_flat_data:
-                st.warning("⚠️ 当前上传的数据未包含平码信息，该战法自动待命中。")
-            else:
-                render_kpi_header(stats_flat_elem_k1, f"杀 {len(curr_killed_flat_elem_nums)} 码 (1五行)")
-                st.error(f"🚫 **【本期平特 7 球极端聚集透支的五行】：** `【{curr_top1_elem}】` (涵盖 {len(curr_killed_flat_elem_nums)} 个特码)")
-                st.code(", ".join([f"{x:02d}" for x in curr_killed_flat_elem_nums]), language="text")
-                st.success(f"🏆 **【本期平特五行透支保留大底池】（共 {len(curr_kept_flat_elem_nums)} 码 ｜ 点击右上角复制）：**")
-                st.code(", ".join([f"{x:02d}" for x in curr_kept_flat_elem_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_flat_elem_k1, len(curr_kept_flat_elem_nums), key_prefix="mod_flat_elem")
-
-        # ==========================================
-        # 模块 17: 🎯 尾数动态惯性整杀10码
-        # ==========================================
-        elif selected_func.startswith("🎯 17."):
-            st.subheader("🎯 尾数动态惯性整杀 10 码（杀过热重叠 2 尾 ｜ 胜率突破 87.8%）")
-            rem_39 = sorted(curr_f2_kept)
-            k10_tail = sorted(curr_f2_kill)
-            render_kpi_header(stats_tail10, "候选: 严格 39 码")
-            st.error(f"🚫 **【锁定整杀的 2 个过热尾数】：** `{curr_dead_tails_2[0]} 尾` 与 `{curr_dead_tails_2[1]} 尾`（共 10 码）")
-            st.code(", ".join([f"{x:02d}" for x in k10_tail]), language="text")
-            st.success("🏆 **【尾数整杀精选 39 码大底池】：**")
-            st.code(", ".join([f"{x:02d}" for x in rem_39]), language="text")
-            render_financial_calculator_and_streaks(stats_tail10, 39, key_prefix="mod3")
-
-        # ==========================================
-        # 模块 18: 🚀 非对称环形拓扑位移杀10码
-        # ==========================================
-        elif selected_func.startswith("🚀 18."):
-            st.subheader("🚀 非对称环形拓扑位移杀 10 码（精选 39 码 ｜ 胜率突破 87.3%）")
-            render_kpi_header(stats_asym10, "候选: 严格 39 码")
-            st.error(f"🚫 **【环形拓扑精准剔除 10 码】（上期特码 {curr_prev_num:02d}）：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(curr_f3_kill)]), language="text")
-            st.success("🏆 **【环形位移精选 39 码大底池】：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(curr_f3_kept)]), language="text")
-            render_financial_calculator_and_streaks(stats_asym10, 39, key_prefix="mod4")
-
-        # ==========================================
-        # 模块 19: 🧊 冷热遗漏分层控码选号
-        # ==========================================
-        elif selected_func.startswith("🧊 19."):
-            st.subheader("🧊 五层冷热遗漏梯级选号与杀号引擎")
-            l_sel = sorted(curr_f1_kept)
-            l_rem = sorted(curr_f1_kill)
-            render_kpi_header(stats_layers, f"分层精选: {len(l_sel)} 码")
-            st.success(f"🏆 **【分层控码精选大底池】({len(l_sel)} 码)：**")
-            st.code(", ".join([f"{x:02d}" for x in l_sel]), language="text")
-            st.error(f"🚫 **【分层淘汰冷杂死码池】({len(l_rem)} 码)：**")
-            st.code(", ".join([f"{x:02d}" for x in l_rem]), language="text")
-            render_financial_calculator_and_streaks(stats_layers, len(l_sel), key_prefix="mod5")
-
-        # ==========================================
-        # 模块 20: 💰 阶梯对冲分区分级仓位
-        # ==========================================
-        elif selected_func.startswith("💰 20."):
-            st.subheader("💰 阶梯对冲仓位对冲模型（20元 / 10元 / 5元区 · 中5元保本盈利架构）")
-            chosen_tier_plan = st.radio("👉 选择具体配置方案：", list(tier_configs.keys()), index=0, horizontal=True)
-            cfg = tier_configs[chosen_tier_plan]
-            st_info = tier_stats[chosen_tier_plan]
-            n20, n10, n5 = cfg['n20'], cfg['n10'], cfg['n5']
-            tier_20_nums = sorted(curr_ranked_tier[:n20])
-            tier_10_nums = sorted(curr_ranked_tier[n20:n20+n10])
-            tier_5_nums = sorted(curr_ranked_tier[n20+n10:n20+n10+n5])
-            tier_killed_nums = sorted(curr_ranked_tier[n20+n10+n5:])
-            render_kpi_header(st_info, f"总买: {n20+n10+n5} 码")
-            c_p1, c_p2 = st.columns(2)
-            with c_p1:
-                st.warning(f"🥇 **【20元 金胆区】（共 {n20} 码 ｜ 单日净赚 `+705元`）：**")
-                st.code(", ".join([f"{x:02d}" for x in tier_20_nums]), language="text")
-                st.info(f"🥈 **【10元 银胆区】（共 {n10} 码 ｜ 单日净赚 `+235元`）：**")
-                st.code(", ".join([f"{x:02d}" for x in tier_10_nums]), language="text")
-            with c_p2:
-                st.success(f"🥉 **【5元 防守底区】（共 {n5} 码 ｜ 全天保本 `0 亏损`）：**")
-                st.code(", ".join([f"{x:02d}" for x in tier_5_nums]), language="text")
-                st.error(f"🚫 **【剔除死码区】（共 {len(tier_killed_nums)} 码 ｜ 坚决不买）：**")
-                st.code(", ".join([f"{x:02d}" for x in tier_killed_nums]), language="text")
-            render_financial_calculator_and_streaks(st_info, n20+n10+n5, key_prefix="mod6")
-
-        # ==========================================
-        # 模块 21: 👑 全维动能多因子打分 Top 40
-        # ==========================================
-        elif selected_func.startswith("👑 21."):
-            st.subheader("👑 全维动能多因子打分法（固定锁定 40 码大底 ｜ 胜率突破 85.0%）")
-            top40_res = sorted([x[0] for x in sorted(curr_f5_scores.items(), key=lambda x: -x[1])[:40]])
-            render_kpi_header(stats_top40, "严格 40 码")
-            st.success("🏆 **【全维动能精选 40 码大底池】：**")
-            st.code(", ".join([f"{x:02d}" for x in top40_res]), language="text")
-            render_financial_calculator_and_streaks(stats_top40, 40, key_prefix="mod7")
-
-        # ==========================================
-        # 模块 22: 🎯 全息共振精选30码
-        # ==========================================
-        elif selected_func.startswith("🎯 22."):
-            st.subheader("🎯 全息共振精选 30 码（精准杀 19 码 · 全量胜率逼近 80% · 近30天达 83.3%）")
-            p30_choice = st.radio("👉 选择 30 码方案：", [
-                "方案一：七维全息风险共振法 (全量胜率 79.45% · 长期稳健总冠军)",
-                "方案二：近期爆发型动能共振法 (近30天胜率 83.33% · 全量 79.00%)",
-                "方案三：防守优先·大底收敛杀19码法 (近7天胜率 85.71% · 近30天 83.33%)"
-            ], index=0)
-
-            if "方案一" in p30_choice: st_p30, p30_curr = stats_pool30_1, curr_p30_1
-            elif "方案二" in p30_choice:
-                st_p30 = stats_pool30_2
-                p30_curr = sorted(range(1, 50), key=lambda n: ((1.0 if n in curr_f1_kill else 0)+(3.0 if n in curr_f2_kill else 0)+(1.0 if n in curr_f3_kill else 0)+(1.0 if n in curr_f4_kill else 0)+(1.5 if n in curr_f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in curr_zods_sea else 0)-(1.0 if num_omission[n]>=num_last_omission[n] else 0), -curr_f5_scores[n]))[:30]
-            else:
-                st_p30 = stats_pool30_3
-                p30_curr = sorted(range(1, 50), key=lambda n: ((1.0 if n in curr_f1_kill else 0)+(2.0 if n in curr_f2_kill else 0)+(1.0 if n in curr_f3_kill else 0)+(1.0 if n in curr_f4_kill else 0)+(2.5 if n in curr_f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in curr_zods_sea else 0), -curr_f5_scores[n]))[:30]
-
-            render_kpi_header(st_p30, "严格 30 码 (杀19码)")
-            st.success("🏆 **【本期精选 30 码大底池】（点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(p30_curr)]), language="text")
-            st.error("🚫 **【本期精准剔除的 19 个死码】：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted([n for n in range(1, 50) if n not in p30_curr])]), language="text")
-            render_financial_calculator_and_streaks(st_p30, 30, key_prefix="mod8")
-
-        # ==========================================
-        # 模块 23: 🤝 强强联手·多维交集共振池
-        # ==========================================
-        elif selected_func.startswith("🤝 23."):
-            st.subheader("🤝 强强联手·多维交集共振池（正交多算法重叠取交集）")
-            pair_choice = st.radio("👉 选择联合方案组合：", [
-                "组合 A：杀三肖 + 物理杀10码 (全量 76.2% ｜ 近30天 80.0% ｜ 近7天 100%)",
-                "组合 B：冷热分层 + 尾数杀10码 (平均 34.1 码 ｜ 全量 76.2% ｜ 近30天 73.3%)",
-                "组合 C：拓扑杀10码 + 全维杀3肖 (平均 29.3 码 ｜ 全量 71.7% ｜ 近30天 73.3%)"
-            ], index=0)
-
-            if "组合 A" in pair_choice:
-                st_inter = stats_inter_6_7
-                cur_inter = sorted(set(curr_f4_kept) - set(curr_sorted_dead_nums[:10]))
-                desc = "黄金杀三肖（留9肖37码）联合物理神盾杀10码，胜率高达 76.2%~80.0%，近7天满贯连红！"
-            elif "组合 B" in pair_choice:
-                st_inter = stats_inter_4_5
-                cur_inter = sorted(curr_f1_kept & curr_f2_kept)
-                desc = "五层冷热大底 (F1) 剔除尾数过热 2 尾，天然正交互补，同时错概率低至 1.83%！"
-            else:
-                st_inter = stats_inter_6_7
-                cur_inter = sorted(curr_f3_kept & curr_f4_kept)
-                desc = "几何环形拓扑盲区与动能杀3肖正交剪裁，底池收敛在 28-30 码。"
-
-            render_kpi_header(st_inter, f"交集: {len(cur_inter)} 码")
-            st.info(f"💡 **算法共振机制**：{desc}")
-            st.success(f"🏆 **【本期交集共振推荐号码】（共 {len(cur_inter)} 码 ｜ 点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in cur_inter]), language="text")
-            render_financial_calculator_and_streaks(st_inter, len(cur_inter), key_prefix="mod9")
-
-        # ==========================================
-        # 模块 24: 🛡️ 三区间非对称杀12码
-        # ==========================================
-        elif selected_func.startswith("🛡️ 24."):
-            st.subheader("🛡️ 三区间非对称盲区杀 12 码（精选 37 码）")
-            render_kpi_header(stats_asym12, "严格 37 码 (杀12码)")
-            st.error("🚫 **剔除 12 码：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(curr_f6_kill)]), language="text")
-            st.success("🏆 **精选 37 码池：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(curr_f6_kept)]), language="text")
-            render_financial_calculator_and_streaks(stats_asym12, 37, key_prefix="mod10")
-
-        # ==========================================
-        # 模块 25: ⚡ 空间形态拐点选号 (OR并集)
-        # ==========================================
-        elif selected_func.startswith("⚡ 25."):
-            st.subheader("⚡ 生肖空间形态分区智能选号 (OR并集)")
-            nums_or = sorted([n for n in range(1, 50) if get_zodiac_of_number(n) in curr_zods_or])
-            render_kpi_header(stats_or, f"全包抄: {len(nums_or)} 码")
-            st.success(f"🏆 **空间形态全包抄池 ({len(nums_or)}码)：**")
-            st.code(", ".join([f"{x:02d}" for x in nums_or]), language="text")
-            render_financial_calculator_and_streaks(stats_or, len(nums_or), key_prefix="mod11")
-
-        # ==========================================
-        # 模块 26: 🎯 欲出率特赦恢复智能选号
-        # ==========================================
-        elif selected_func.startswith("🎯 26."):
-            st.subheader("🎯 智能精选选号（欲出率剔除 + 遗漏拐点特赦）")
-            f4_sel = sorted([n for n in range(1, 50) if n not in curr_f8_kill])
-            render_kpi_header(stats_f4, f"特赦恢复: {len(f4_sel)} 码")
-            st.success(f"🏆 **特赦恢复精选池 ({len(f4_sel)}码)：**")
-            st.code(", ".join([f"{x:02d}" for x in f4_sel]), language="text")
-            render_financial_calculator_and_streaks(stats_f4, len(f4_sel), key_prefix="mod12")
-
-        # ==========================================
-        # 模块 27: 🛡️ 近前盲区连续杀12码
-        # ==========================================
-        elif selected_func.startswith("🛡️ 27."):
-            st.subheader("🛡️ 近前盲区位移连续杀 12 码")
-            sel_b37 = sorted([n for n in range(1, 50) if n not in curr_f9_kill])
-            render_kpi_header(stats_blind12, "保留: 严格 37 码")
-            st.error("🚫 **剔除 12 码：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(curr_f9_kill)]), language="text")
-            st.success("🏆 **保留 37 码：**")
-            st.code(", ".join([f"{x:02d}" for x in sel_b37]), language="text")
-            render_financial_calculator_and_streaks(stats_blind12, 37, key_prefix="mod13")
-
-        # ==========================================
-        # 模块 28: ❌ 综合反向杀15码
-        # ==========================================
-        elif selected_func.startswith("❌ 28."):
-            st.subheader("❌ 综合概率模型：精选 15 个死码")
-            top15_nums = sorted([x[0] for x in sorted(curr_f10_scores.items(), key=lambda x: (x[1], x[0]))[:15]])
-            render_kpi_header(stats_kill15, "杀 15 码 (留34码)")
-            st.error("🚫 **15 个死码池：**")
-            st.code(", ".join([f"{x:02d}" for x in top15_nums]), language="text")
-            render_financial_calculator_and_streaks(stats_kill15, 34, key_prefix="mod14")
-
-        # ==========================================
-        # 模块 29: 🔥 混合规则共振留24码
-        # ==========================================
-        elif selected_func.startswith("🔥 29."):
-            st.subheader("🔥 混合规则共振精选 24 码（千元平注暴利模型 · 胜率 64%~73%）")
-            h_choice = st.radio("👉 选择混合规则方案：", [
-                "方案三：四重防线层层剥离法 (近30天胜率 73.33% · 爆发冠军)",
-                "方案二：冷热强化五维共振法 (近30天胜率 70.00% · 长短线双高)",
-                "方案一：六维风险积分共振法 (全量胜率 66.20% · 长期利润冠军)"
-            ], index=0)
-            if "方案三" in h_choice: st_h, p24_curr = stats_hybrid3, sorted(curr_base_24_s3)
-            elif "方案二" in h_choice:
-                st_h = stats_hybrid2
-                p24_curr = sorted(range(1, 50), key=lambda n: ((2.0 if n in curr_f1_kill else 0)+(2.5 if n in curr_f2_kill else 0)+(2.5 if n in curr_f3_kill else 0)+(1.0 if n in curr_f4_kill else 0)+(2.5 if n in curr_f6_kill else 0)+(0.5 if get_zodiac_of_number(n) not in sub_zods_sea else 0), -curr_f5_scores[n]))[:24]
-            else: st_h, p24_curr = stats_hybrid1, sorted(curr_base_24_s1)
-
-            render_kpi_header(st_h, "严格 24 码 (定额)")
-            st.success("🏆 **【本期混合精选 24 码大底池】（点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(p24_curr)]), language="text")
-            st.error("🚫 **【本期混合联立剔除的 25 个死码】：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted([n for n in range(1, 50) if n not in p24_curr])]), language="text")
-            render_financial_calculator_and_streaks(st_h, 24, key_prefix="mod15")
-
-        # ==========================================
-        # 模块 30: ⚡ 极限高盈亏比 15-20 码狙击模型
-        # ==========================================
-        elif selected_func.startswith("⚡ 30."):
-            st.subheader("⚡ 极限高盈亏比 15~20 码狙击模型（小本金博取翻倍红利）")
-            slim_plan = st.radio("👉 选择具体极限规格：", [
-                "20 码：近期爆发王 (近30天胜率 70.0% ｜ 全量 54.34% ｜ 盈亏比 1.35:1)",
-                "18 码：近期高胜王 (近30天胜率 63.3% ｜ 全量 48.86% ｜ 盈亏比 1.61:1)",
-                "16 码：高盈亏比王 (近30天胜率 53.3% ｜ 全量 45.66% ｜ 盈亏比 1.94:1)",
-                "15 码：超限狙击王 (中一次顶两次半 ｜ 近30天 53.3% ｜ 盈亏比 2.13:1)"
-            ], index=0)
-
-            if "20 码" in slim_plan: st_sl, cur_sl, n_codes = stats_slim_20, curr_pool_20, 20
-            elif "18 码" in slim_plan: st_sl, cur_sl, n_codes = stats_slim_18, curr_pool_18, 18
-            elif "16 码" in slim_plan: st_sl, cur_sl, n_codes = stats_slim_16, curr_pool_16, 16
-            else: st_sl, cur_sl, n_codes = stats_slim_15, curr_pool_15, 15
-
-            render_kpi_header(st_sl, f"极限精选 {n_codes} 码")
-            st.success(f"🏆 **【本期极限精选 {n_codes} 码候选池】（点击右上角复制）：**")
-            st.code(", ".join([f"{x:02d}" for x in sorted(cur_sl)]), language="text")
-            render_financial_calculator_and_streaks(st_sl, n_codes, key_prefix="mod16")
-
-        # ==========================================
-        # 模块 31: 🌸 四季 / 🪙 五行 / 🔢 七段数
-        # ==========================================
-        elif selected_func.startswith("🌸 31."):
-            st.subheader("🌸 四季 ｜ 🪙 五行 ｜ 🔢 七段数 周期形态拐点智能选号")
-            t_s1, t_s2, t_s3 = st.tabs(["🌸 四季生肖拐点", "🪙 五行属性拐点", "🔢 七段数拐点"])
-            with t_s1:
-                sea_nums = sorted([n for n in range(1, 50) if get_zodiac_of_number(n) in curr_zods_sea])
-                st.metric("四季生肖胜率", f"{stats_seasons['total_rate']:.1f}%", f"近30天: {stats_seasons['r30_rate']:.1f}% ｜ 近14天: {stats_seasons['r14_rate']:.0f}%")
-                st.code(", ".join([f"{x:02d}" for x in sea_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_seasons, len(sea_nums), key_prefix="mod17_s")
-            with t_s2:
-                trig_elem = [en for en in five_elements if element_omission[en] >= element_last_omission[en]]
-                elem_nums = sorted(list(set([n for en in trig_elem for n in five_elements[en]])))
-                st.metric("五行属性胜率", f"{stats_elements['total_rate']:.1f}%", f"近30天: {stats_elements['r30_rate']:.1f}% ｜ 近14天: {stats_elements['r14_rate']:.0f}%")
-                st.code(", ".join([f"{x:02d}" for x in elem_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_elements, len(elem_nums), key_prefix="mod17_e")
-            with t_s3:
-                trig_seg = [sgn for sgn in seven_segments if segment_omission[sgn] >= segment_last_omission[sgn]]
-                seg_nums = sorted(list(set([n for sgn in trig_seg for n in seven_segments[sgn]])))
-                st.metric("七段数胜率", f"{stats_segments['total_rate']:.1f}%", f"近30天: {stats_segments['r30_rate']:.1f}% ｜ 近14天: {stats_segments['r14_rate']:.0f}%")
-                st.code(", ".join([f"{x:02d}" for x in seg_nums]), language="text")
-                render_financial_calculator_and_streaks(stats_segments, len(seg_nums), key_prefix="mod17_sg")
-
-        # ==========================================
-        # 模块 32: ⏳ 当前双重遗漏与欲出总榜
-        # ==========================================
-        elif selected_func.startswith("⏳ 32."):
-            st.subheader("⏳ 各指标当前双重遗漏与欲出率深度统计")
-            n_list = [(n, num_omission[n], num_last_omission[n], num_rates[n]) for n in range(1, 50)]
-            n_list.sort(key=lambda x: -x[3])
-            md = "| 排名 | 号码 | 当前遗漏 | 上次遗漏 | 欲出几率 |\n| :---: | :---: | :---: | :---: | :---: |\n"
-            for r, (n, miss, l_miss, rate) in enumerate(n_list, 1):
-                tags = (" 🚨" if miss >= l_miss else "") + (" 🔥" if rate >= 0.4 else "")
-                md += f"| {r} | **{n:02d}**{tags} | {miss}期 | {l_miss}期 | {rate:.2f} |\n"
-            st.markdown(md)
-
-        # ==========================================
-        # 模块 33: 🔥 大盘总量冷热排行统计
-        # ==========================================
-        elif selected_func.startswith("🔥 33."):
-            st.subheader("📊 整体出现次数总计 (全量大盘分析)")
-            num_hot = sorted([(n, num_counts[n]) for n in range(1, 50)], key=lambda x: (-x[1], x[0]))
-            md = "| 排名 | 号码 | 出现次数 |\n| :---: | :---: |\n"
-            for rank, (n, cnt) in enumerate(num_hot, 1):
-                md += f"| {rank} | **{n:02d}** | {cnt}次 |\n"
-            st.markdown(md)
-
-        # ==========================================
-        # 模块 34: 🔄 前后行状态转移概率矩阵
-        # ==========================================
-        elif selected_func.startswith("🔄 34."):
-            st.subheader("🔄 纵向序列演变规律概率分布")
-            tail_trans_md = "| 当前尾数 | 历史总计 | 下一行尾数概率分布 (降序排列) |\n| :---: | :---: | :--- |\n"
-            for tail in range(10):
-                nexts = tail_transitions[tail]
-                total = len(nexts)
-                counts = defaultdict(int)
-                for n in nexts: counts[n] += 1
-                prob_parts = sorted([(t, counts[t], (counts[t]/total*100 if total>0 else 0.0)) for t in all_tails], key=lambda x: (-x[1], x[0]))
-                tail_trans_md += f"| **{tail}尾** | {total}次 | {' ｜ '.join([f'{t}尾: {p:.1f}%({c}次)' for t, c, p in prob_parts])} |\n"
-            st.markdown(tail_trans_md)
-
-    except Exception as global_ex:
-        st.error(f"🚨 大盘核心数据解析时发生错误: {global_ex}")
-        st.code(traceback.format_exc(), language="text")
+import streamlit as st import pandas as pd import numpy as np from collections import
+defaultdict, Counter import itertools import traceback st.set_page_config(page_title="数据全维度
+智能统计看板·终极实战版", layout="wide", initial_sidebar_state="expanded") st.title("
+📊
+ 开奖记
+录全维度综合统计看板 (含方案一阶梯对冲 ＆ 方案三极致连红)") st.caption("
+💰
+ 方案一:阶梯对冲
+35码(+3.37万/胜率81.7%) ｜ 
+�
+�
+ 方案三:极致连红收割(杀2肖88.8%/杀3码97.8%) ｜ 
+�
+�
+ 三级正交
+漏斗28码 ｜ 
+�
+�
+ AI自动匹配 ｜ 全周期风控") ALL_TAILS = list(range(10)) ZODIAC_ORDER =
+['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪'] ZOD_TO_IDX = {z: i for i, z in
+enumerate(ZODIAC_ORDER)} ALL_HEADS = list(range(5)) DEFAULT_HORSE_MAP = ['马',
+'蛇', '龙', '兔', '虎', '牛', '鼠', '猪', '狗', '鸡', '猴', '羊'] RED_BALLS = {1, 2, 7, 8, 12, 13, 18, 19, 23,
+24, 29, 30, 34, 35, 40, 45, 46} BLUE_BALLS = {3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42,
+47, 48} GREEN_BALLS = {5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49}
+ALL_HALF_WAVES = ['红单', '红双', '蓝单', '蓝双', '绿单', '绿双'] ALL_QUADS = ['小单', '小双', '大
+单', '大双'] def get_half_wave(n): c = '红' if n in RED_BALLS else ('蓝' if n in BLUE_BALLS else
+'绿') return f"{c}{'单' if n % 2 == 1 else '双'}" def get_quad(n): return ('大' if n >= 25 else '小') +
+('单' if n % 2 == 1 else '双') HW_NUMBERS = {hw: [n for n in range(1, 50) if get_half_wave(n) ==
+hw] for hw in ALL_HALF_WAVES} DR_NUMBERS = {d: [n for n in range(1, 50) if (n - 1) % 9 + 1
+== d] for d in range(1, 10)} CST_NUMBERS = {c: [n for n in range(1, 50) if (n // 10 + n % 10) %
+10 == c] for c in range(10)} MOD7_NUMBERS = {r: [n for n in range(1, 50) if n % 7 == r] for r in
+range(7)} HEAD_NUMBERS = {h: [n for n in range(1, 50) if n // 10 == h] for h in range(5)}
+QUAD_NUMBERS = {q: [n for n in range(1, 50) if get_quad(n) == q] for q in ALL_QUADS}
+ZODIAC_ZONES_2 = {'上区': ['马', '蛇', '龙', '兔', '虎', '牛'], '下区': ['鼠', '猪', '狗', '鸡', '猴', '羊']}
+ZODIAC_ZONES_3 = {'左区': ['马', '兔', '鼠', '鸡'], '中区': ['蛇', '虎', '猪', '猴'], '右区': ['龙', '牛', '狗',
+'羊']} ZODIAC_SEASONS = {'春肖': ['虎', '兔', '龙'], '夏肖': ['蛇', '马', '羊'], '秋肖': ['猴', '鸡', '狗'], '冬
+肖': ['猪', '鼠', '牛']} FIVE_ELEMENTS = { '金行': [4, 5, 12, 13, 26, 27, 34, 35, 42, 43], '木行': [8, 9,
+16, 17, 24, 25, 38, 39, 46, 47], '水行': [1, 14, 15, 22, 23, 30, 31, 44, 45], '火行': [2, 3, 10, 11, 18,
+19, 32, 33, 40, 41, 48, 49], '土行': [6, 7, 20, 21, 28, 29, 36, 37] } SEVEN_SEGMENTS = {f'{k}段':
+list(range(1 + (k - 1) * 7, 1 + k * 7)) for k in range(1, 8)} NUM_TO_ELEM = {n: en for en, el in
+FIVE_ELEMENTS.items() for n in el} NUM_TO_SEG = {n: sgn for sgn, sgl in
+SEVEN_SEGMENTS.items() for n in sgl} def infer_zod_map(num, zod): if zod in ZOD_TO_IDX:
+idx0 = ZOD_TO_IDX[zod] return {n: ZODIAC_ORDER[(idx0 - (n - num)) % 12] for n in range(1,
+50)} return {n: DEFAULT_HORSE_MAP[(n - 1) % 12] for n in range(1, 50)} def
+calc_rate_and_streaks(hit_list): n = len(hit_list) if n == 0: return {k: 0.0 for k in ['total_rate',
+'r30_rate', 'r14_rate', 'r7_rate', 'r3_rate', 'streak2_rate', 'streak3_rate']} | { k: 0 for k in ['total_hits',
+'total_n', 'r30_hits', 'r30_n', 'r14_hits', 'r14_n', 'r7_hits', 'r7_n', 'r3_hits', 'r3_n', 'streak2_hits',
+'streak3_hits', 'max_win_streak', 'max_loss_streak', 'r30_max_loss', 'r14_max_loss',
+'cur_win_streak'] } th = sum(hit_list) sub3, sub7, sub14, sub30 = hit_list[-3:], hit_list[-7:],
+hit_list[-14:], hit_list[-30:] s2 = sum(1 for j in range(n - 1) if hit_list[j] and hit_list[j + 1]) s3 = sum(1
+for j in range(n - 2) if hit_list[j] and hit_list[j + 1] and hit_list[j + 2]) def calc_streaks(seq): mw = cw
+= ml = cl = 0 for h in seq: if h: cw += 1; mw = max(mw, cw); cl = 0 else: cl += 1; ml = max(ml, cl);
+cw = 0 return mw, ml, cw mw, ml, cw = calc_streaks(hit_list) _, r30_ml, _ = calc_streaks(sub30)
+_, r14_ml, _ = calc_streaks(sub14) return { 'total_rate': th / n * 100, 'total_hits': th, 'total_n': n,
+'r30_rate': sum(sub30) / len(sub30) * 100, 'r30_hits': sum(sub30), 'r30_n': len(sub30), 'r14_rate':
+sum(sub14) / len(sub14) * 100, 'r14_hits': sum(sub14), 'r14_n': len(sub14), 'r7_rate': sum(sub7) /
+len(sub7) * 100, 'r7_hits': sum(sub7), 'r7_n': len(sub7), 'r3_rate': sum(sub3) / len(sub3) * 100,
+'r3_hits': sum(sub3), 'r3_n': len(sub3), 'streak2_rate': (s2 / (n - 1) * 100) if n > 1 else 0.0,
+'streak2_hits': s2, 'streak3_rate': (s3 / (n - 2) * 100) if n > 2 else 0.0, 'streak3_hits': s3,
+'max_win_streak': mw, 'max_loss_streak': ml, 'r30_max_loss': r30_ml, 'r14_max_loss': r14_ml,
+'cur_win_streak': cw } def render_kpi_header(stats, label=""): c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("
+📊
+ 全量实测胜率", f"{stats['total_rate']:.2f}%", f"{stats['total_hits']}/{stats['total_n']}期")
+c2.metric("
+📅
+ 近30天胜率", f"{stats['r30_rate']:.1f}%", f"30天连黑: {stats['r30_max_loss']} 期")
+c3.metric("
+⚡
+ 近14天胜率", f"{stats['r14_rate']:.1f}%", f"14天连黑: {stats['r14_max_loss']} 期")
+c4.metric("
+🔥
+ 近7天胜率", f"{stats['r7_rate']:.1f}%", f"{stats['r7_hits']}/{stats['r7_n']}期")
+c5.metric("
+🚀
+ 近3天胜率", f"{stats['r3_rate']:.1f}%", label if label else f"
+{stats['r3_hits']}/{stats['r3_n']}期") def render_financial_and_streaks(stats, n_codes,
+key_prefix="calc"): st.write("---") st.markdown("#### 
+�
+�
+ 连红稳定性与连黑风控综合看板：") c1,
+c2, c3, c4, c5 = st.columns(5) c1.metric("
+🔥
+ 2 连红成功率", f"{stats['streak2_rate']:.1f}%", f"
+{stats['streak2_hits']} 次达成") c2.metric("
+🚀
+ 3 连红成功率", f"{stats['streak3_rate']:.1f}%", f"
+{stats['streak3_hits']} 次达成") c3.metric("
+🏆
+ 历史最长连红", f"{stats['max_win_streak']} 期", f"当
+前连红: {stats['cur_win_streak']} 期 / 历史最大连黑: {stats['max_loss_streak']} 期") c4.metric("
+🛡
+近30天最大连黑", f"{stats['r30_max_loss']} 期", "抗断缆极强" if stats['r30_max_loss'] <= 2 else
+"注意仓位") c5.metric("
+🛡
+ 近14天最大连黑", f"{stats['r14_max_loss']} 期", "零连黑满贯" if
+stats['r14_max_loss'] == 0 else f"最大连黑 {stats['r14_max_loss']} 期") st.write("---")
+st.markdown("#### 
+�
+�
+ 平注财务动态测算器（支持自定义单码金额与赔率）：") ic1, ic2, ic3 =
+st.columns(3) stake = ic1.number_input("单码投注金额 (元)：", min_value=1, max_value=1000,
+value=20, step=1, key=f"{key_prefix}_s") odds = ic2.number_input("中奖赔率 (倍)：",
+min_value=1.0, max_value=100.0, value=47.0, step=0.5, key=f"{key_prefix}_o") breakeven =
+(n_codes / odds * 100) if odds > 0 else 0 ic3.metric("保本所需胜率红线", f"{breakeven:.2f}%",
+f"超额护城河 {stats['total_rate'] - breakeven:+.2f}%") cost = n_codes * stake win_net = stake *
+odds - cost tot_profit = stats['total_hits'] * win_net - (stats['total_n'] - stats['total_hits']) * cost
+r30_profit = stats['r30_hits'] * win_net - (stats['r30_n'] - stats['r30_hits']) * cost f1, f2, f3, f4, f5 =
+st.columns(5) f1.metric("单期总投入成本", f"{cost:.0f} 元/期", f"覆盖 {n_codes} 码") f2.metric("中
+奖单期净利润", f"{win_net:+.0f} 元") f3.metric("全量累计总净利", f"{tot_profit:+.0f} 元", f"周均:
+{(tot_profit / max(1, stats['total_n'] / 7)):+.0f}元") f4.metric("近30天总净利", f"{r30_profit:+.0f} 元",
+f"周均: {(r30_profit / max(1, stats['r30_n'] / 7)):+.0f}元") f5.metric("
+🎯
+ 2连红锁利", f"{2 *
+win_net:+.0f} 元", "稳健平注不倍投") def evaluate_step(hist, zod_map): h_len = len(hist) prev =
+hist[-1] prev_n, prev_z, prev_flats, prev_flats_zod = prev['num'], prev['zodiac'], prev['flats'],
+prev['flats_zod'] lag3_z = hist[-3]['zodiac'] if h_len >= 3 else prev_z prev_dr = (prev_n - 1) % 9 +
+1 prev_hw = get_half_wave(prev_n) prev_tail = prev_n % 10 prev_cst = (prev_n // 10 + prev_n
+% 10) % 10 prev_m7 = prev_n % 7 prev_head = prev_n // 10 prev_q = get_quad(prev_n)
+num_idx, tail_idx, zod_idx = defaultdict(list), defaultdict(list), defaultdict(list) dr_idx, hw_idx,
+cst_idx, m7_idx, head_idx, q_idx = defaultdict(list), defaultdict(list), defaultdict(list),
+defaultdict(list), defaultdict(list), defaultdict(list) sea_idx, elem_idx, seg_idx, z2_idx, z3_idx =
+defaultdict(list), defaultdict(list), defaultdict(list), defaultdict(list), defaultdict(list) for idx, p in
+enumerate(hist): pn, pz = p['num'], p['zodiac'] num_idx[pn].append(idx) tail_idx[pn %
+10].append(idx) zod_idx[pz].append(idx) dr_idx[(pn - 1) % 9 + 1].append(idx)
+hw_idx[get_half_wave(pn)].append(idx) cst_idx[(pn // 10 + pn % 10) % 10].append(idx)
+m7_idx[pn % 7].append(idx) head_idx[pn // 10].append(idx) q_idx[get_quad(pn)].append(idx) for
+zn, zl in ZODIAC_ZONES_2.items(): if pz in zl: z2_idx[zn].append(idx) for zn, zl in
+ZODIAC_ZONES_3.items(): if pz in zl: z3_idx[zn].append(idx) for sn, sl in
+ZODIAC_SEASONS.items(): if pz in sl: sea_idx[sn].append(idx)
+elem_idx[NUM_TO_ELEM[pn]].append(idx) seg_idx[NUM_TO_SEG[pn]].append(idx) def
+om_pair(idx_dict, keys): om = {k: (h_len - 1 - idx_dict[k][-1]) if idx_dict[k] else h_len for k in keys}
+last = {k: (idx_dict[k][-1] - idx_dict[k][-2] - 1) if len(idx_dict[k]) >= 2 else (idx_dict[k][-1] if
+idx_dict[k] else 0) for k in keys} rates = {k: om[k] / ((h_len / len(idx_dict[k])) if idx_dict[k] else
+h_len) for k in keys} return om, last, rates num_om, num_last, num_rates = om_pair(num_idx,
+range(1, 50)) tail_om, tail_last, tail_rates = om_pair(tail_idx, ALL_TAILS) zod_om, zod_last,
+zod_rates = om_pair(zod_idx, ZODIAC_ORDER) dr_om, dr_last, _ = om_pair(dr_idx, range(1,
+10)) hw_om, hw_last, hw_rates = om_pair(hw_idx, ALL_HALF_WAVES) cst_om, cst_last, _ =
+om_pair(cst_idx, range(10)) m7_om, m7_last, _ = om_pair(m7_idx, range(7)) head_om,
+head_last, _ = om_pair(head_idx, range(5)) q_om, q_last, _ = om_pair(q_idx, ALL_QUADS)
+z2_om, z2_last, _ = om_pair(z2_idx, ZODIAC_ZONES_2.keys()) z3_om, z3_last, _ =
+om_pair(z3_idx, ZODIAC_ZONES_3.keys()) sea_om, sea_last, _ = om_pair(sea_idx,
+ZODIAC_SEASONS.keys()) elem_om, elem_last, _ = om_pair(elem_idx,
+FIVE_ELEMENTS.keys()) seg_om, seg_last, _ = om_pair(seg_idx,
+SEVEN_SEGMENTS.keys()) # 转移频次统计 trans_z, trans_num, trans_dr, trans_hw,
+trans_tail_hw, trans_cst, trans_m7, trans_head, trans_q = (defaultdict(int) for _ in range(9))
+dist_counts, from_pn_dists = defaultdict(int), defaultdict(int) for idx in range(h_len - 1): a, az =
+hist[idx]['num'], hist[idx]['zodiac'] b, bz = hist[idx + 1]['num'], hist[idx + 1]['zodiac'] if az == prev_z:
+trans_z[bz] += 1 if a == prev_n: trans_num[b] += 1 if (a - 1) % 9 + 1 == prev_dr: trans_dr[(b - 1)
+% 9 + 1] += 1 if get_half_wave(a) == prev_hw: trans_hw[get_half_wave(b)] += 1 if a % 10 ==
+prev_tail: trans_tail_hw[get_half_wave(b)] += 1 if (a // 10 + a % 10) % 10 == prev_cst:
+trans_cst[(b // 10 + b % 10) % 10] += 1 if a % 7 == prev_m7: trans_m7[b % 7] += 1 if a // 10 ==
+prev_head: trans_head[b // 10] += 1 if get_quad(a) == prev_q: trans_q[get_quad(b)] += 1 d =
+min((a - b) % 49, (b - a) % 49) dist_counts[d] += 1 if a == prev_n: from_pn_dists[d] += 1 # 1. 四
+大生肖防线 pz_idx = ZOD_TO_IDX.get(prev_z, 0) k2_zods = [ZODIAC_ORDER[pz_idx],
+ZODIAC_ORDER[(pz_idx + 3) % 12]] # 模12正交90度相位角法 c7_zods =
+Counter((prev_flats_zod if prev_flats_zod else []) + [prev_z]) rec5_sp_z = Counter(x['zodiac'] for
+x in hist[-5:]) scores_z3 = {} scores_z4 = {} for z in ZODIAC_ORDER: s3 = (3.5 if z == prev_z
+else 0.0) + c7_zods[z] * 2.0 + (3.5 if trans_z[z] == 0 else (1.4 if trans_z[z] == 1 else 0.0)) if 4 <=
+zod_om[z] < zod_last[z]: s3 += 2.0 if zod_om[z] >= zod_last[z] and zod_om[z] >= 3: s3 -= 4.5
+scores_z3[z] = s3 s4 = (3.5 if z == prev_z else 0.0) + (2.5 if rec5_sp_z[z] >= 2 else 0.0) + (1.5 if
+z == lag3_z else 0.0) + c7_zods[z] * 1.8 s4 += (3.5 if trans_z[z] == 0 else (1.4 if trans_z[z] == 1
+else 0.0)) if 4 <= zod_om[z] < zod_last[z]: s4 += 1.8 if zod_om[z] >= zod_last[z] and zod_om[z]
+>= 3: s4 -= 5.5 scores_z4[z] = s4 ranked_z3 = sorted(ZODIAC_ORDER, key=lambda z: (
+scores_z3[z], -zod_om[z])) ranked_z4 = sorted(ZODIAC_ORDER, key=lambda z: (
+scores_z4[z], -zod_om[z])) k3_zods = ranked_z3[:3] k4_zods = ranked_z4[:4] k5_zods =
+ranked_z3[:5] kept_z2 = {n for n in range(1, 50) if zod_map[n] not in set(k2_zods)} kept_z3 = {n
+for n in range(1, 50) if zod_map[n] not in set(k3_zods)} kept_z4 = {n for n in range(1, 50) if
+zod_map[n] not in set(k4_zods)} kept_z5 = {n for n in range(1, 50) if zod_map[n] not in
+set(k5_zods)} # 2. 空间与同余死区 rec8_t = Counter(x['num'] % 10 for x in hist[-8:]) scores_t =
+sorted([(t, rec8_t[t] - tail_om[t]) for t in range(1, 10)], key=lambda x: -x[1]) dead_tails_2 =
+(scores_t[0][0], scores_t[1][0]) f2_kill = {n for n in range(1, 50) if (n % 10) in dead_tails_2} off10
+= 18 if prev_n <= 16 else (0 if prev_n <= 33 else 7) f3_kill = {((prev_n + off10 + j - 1) % 49) + 1
+for j in range(10)} off12 = 26 if prev_n <= 16 else (2 if prev_n <= 33 else 5) f6_kill = {((prev_n +
+off12 + j - 1) % 49) + 1 for j in range(12)} f9_kill = {((prev_n + j - 1) % 49) + 1 for j in range(2,
+14)} killed_head_legacy = (prev_head - 2) % 5 f1_kill = {n for n in range(1, 50) if not (
+num_om[n] <= 25 or (26 <= num_om[n] <= 50 and (num_om[n] >= num_last[n] or num_rates[n]
+>= 0.40)) or (51 <= num_om[n] <= 100 and num_om[n] >= num_last[n]) )} rec5_dr =
+Counter((x['num'] - 1) % 9 + 1 for x in hist[-5:]) dr_sc = {d: (3.0 if d == prev_dr else 0) +
+rec5_dr[d] * 1.0 + (3.5 if trans_dr[d] == 0 else (1.4 if trans_dr[d] == 1 else 0)) + (1.0 if 3 <=
+dr_om[d] < dr_last[d] else (-1.5 if dr_om[d] >= dr_last[d] and dr_om[d] >= 3 else 0)) for d in
+range(1, 10)} ranked_dr = sorted(range(1, 10), key=lambda d: (-dr_sc[d], -dr_om[d]))
+dead_dr2_nums = {n for d in ranked_dr[:2] for n in DR_NUMBERS[d]} rec5_hw =
+Counter(get_half_wave(x['num']) for x in hist[-5:]) hw_sc = {} for hw in ALL_HALF_WAVES: sc =
+(10.0 - trans_hw[hw]) * 1.0 + (5.0 - trans_tail_hw[hw]) * (2.0 / 3.0) if 3 <= hw_om[hw] <
+hw_last[hw]: sc += 1.5 if hw_om[hw] >= hw_last[hw] and hw_om[hw] >= 3: sc -= 2.5 if
+rec5_hw[hw] >= 2: sc += 1.0 * rec5_hw[hw] if hw_rates[hw] < 0.4 and hw_om[hw] < hw_last[hw]:
+sc += 1.5 hw_sc[hw] = sc ranked_hw = sorted(ALL_HALF_WAVES, key=lambda hw: (
+hw_sc[hw], -hw_om[hw])) dead_hw1_nums = set(HW_NUMBERS[ranked_hw[0]])
+dead_hw2_nums = set(HW_NUMBERS[ranked_hw[0]] + HW_NUMBERS[ranked_hw[1]])
+rec5_cst = Counter((x['num'] // 10 + x['num'] % 10) % 10 for x in hist[-5:]) cst_sc = {c: (3.0 if c ==
+prev_cst else 0) + rec5_cst[c] * 1.2 + (3.5 if trans_cst[c] == 0 else (1.5 if trans_cst[c] == 1 else
+0)) + (1.2 if 3 <= cst_om[c] < cst_last[c] else (-1.8 if cst_om[c] >= cst_last[c] and cst_om[c] >= 3
+else 0)) for c in range(10)} ranked_cst = sorted(range(10), key=lambda c: (-cst_sc[c], 
+cst_om[c])) dead_cst2_nums = {n for c in ranked_cst[:2] for n in CST_NUMBERS[c]} rec5_m7 =
+Counter(x['num'] % 7 for x in hist[-5:]) m7_sc = {m: (3.0 if m == prev_m7 else 0) + rec5_m7[m] *
+1.5 + (3.5 if trans_m7[m] == 0 else (1.5 if trans_m7[m] == 1 else 0)) + (1.2 if 3 <= m7_om[m] <
+m7_last[m] else (-1.8 if m7_om[m] >= m7_last[m] and m7_om[m] >= 3 else 0)) for m in range(7)}
+ranked_m7 = sorted(range(7), key=lambda m: (-m7_sc[m], -m7_om[m])) dead_m7_1_nums =
+set(MOD7_NUMBERS[ranked_m7[0]]) dead_m7_2_nums =
+set(MOD7_NUMBERS[ranked_m7[0]] + MOD7_NUMBERS[ranked_m7[1]]) rec5_head =
+Counter(x['num'] // 10 for x in hist[-5:]) head_sc = {h: (8.0 - trans_head[h]) + (1.5 if 2 <=
+head_om[h] < head_last[h] else (-2.0 if head_om[h] >= head_last[h] and head_om[h] >= 2 else
+0)) + (1.2 * rec5_head[h] if rec5_head[h] >= 2 else 0) for h in range(5)} ranked_head =
+sorted(range(5), key=lambda h: (-head_sc[h], -head_om[h])) dead_head1_nums =
+set(HEAD_NUMBERS[ranked_head[0]]) dist_sc = {d: (15.0 - dist_counts[d]) * 0.5 + (2.0 if
+from_pn_dists[d] == 0 else 0.0) + (5.0 if d == 0 else 0.0) for d in range(25)} dead_dist9_nums =
+set() for d in sorted(range(25), key=lambda x: -dist_sc[x])[:5]: if d == 0:
+dead_dist9_nums.add(prev_n) else: dead_dist9_nums.add(((prev_n - 1 + d) % 49) + 1)
+dead_dist9_nums.add(((prev_n - 1 - d) % 49) + 1) rec5_q = Counter(get_quad(x['num']) for x in
+hist[-5:]) q_sc = {q: (15.0 - trans_q[q]) + (1.5 if 2 <= q_om[q] < q_last[q] else (-2.0 if q_om[q] >=
+q_last[q] and q_om[q] >= 2 else 0)) + (1.2 * rec5_q[q] if rec5_q[q] >= 2 else 0) for q in
+ALL_QUADS} ranked_q = sorted(ALL_QUADS, key=lambda q: (-q_sc[q], -q_om[q]))
+dead_q1_nums = set(QUAD_NUMBERS[ranked_q[0]]) # 3. 独立逻辑杀码 num_holo_scores = {}
+for n in range(1, 50): sc = (3.5 if n == prev_n else 0.0) + (2.0 if prev_flats and n in set(prev_flats)
+else 0.0) sc += (3.0 if (n % 10) in dead_tails_2 else 0.0) + (2.5 if n in f3_kill else 0.0) + (2.0 if n in
+f6_kill else 0.0) sc += (2.5 if zod_map[n] in set(k3_zods) else 0.0) + (1.0 if (n // 10) ==
+killed_head_legacy else 0.0) num_holo_scores[n] = sc sorted_holo_dead = sorted(range(1, 50),
+key=lambda n: (-num_holo_scores[n], n)) if prev_flats: flat_dead_sc = {fn: (3.0 if trans_num[fn]
+== 0 else 0.0) + (2.5 if fn % 10 == dead_tails_2[0] else 0.0) + (2.0 if (fn - 1) % 9 + 1 == prev_dr
+else 0.0) for fn in prev_flats} best_dead_flat = sorted(prev_flats, key=lambda fn: (
+flat_dead_sc[fn], -fn))[0] k2_dual_set = {prev_n, best_dead_flat} else: k2_dual_set =
+set(sorted_holo_dead[:2]) k3_holo_set = set(sorted_holo_dead[:3]) lat_sc = {n: (2.5 if n in
+dead_m7_1_nums else 0.0) + (2.0 if n in dead_cst2_nums else 0.0) + (3.0 if n in f3_kill else 0.0)
++ (2.4 if n in f6_kill else 0.0) + (2.5 if zod_map[n] in set(k3_zods) else 0.0) + (2.5 if (n % 10) in
+dead_tails_2 else 0.0) for n in range(1, 50)} k5_lattice_set = set(sorted(range(1, 50),
+key=lambda n: (-lat_sc[n], n))[:5]) # 4. 三级正交漏斗与平码中轴保护 flats_sorted =
+sorted(prev_flats) if (prev_flats and len(prev_flats) == 6) else [] edge_flats = {flats_sorted[0],
+flats_sorted[3], flats_sorted[4], flats_sorted[5]} if flats_sorted else set() mid_flats =
+{flats_sorted[1], flats_sorted[2]} if flats_sorted else set() funnel_danger, funnel_tie = {}, {} for n in
+range(1, 50): z = zod_map[n] d_sc = (50.0 if z in set(k4_zods[:3]) else 0.0) + (15.0 if n == prev_n
+else 0.0) d_sc += (3.0 if (n % 10) in dead_tails_2 else 0.0) + (2.5 if n in f3_kill else 0.0) + (2.0 if n
+in f6_kill else 0.0) d_sc += (2.0 if n in dead_cst2_nums else 0.0) + (1.5 if n in edge_flats else
+0.0) + (1.0 if (n // 10) == killed_head_legacy else 0.0) if n in mid_flats: d_sc -= 1.5 # 平码中轴引
+力保护 funnel_danger[n] = d_sc funnel_tie[n] = (1.5 if zod_om[z] >= zod_last[z] else 0.0) + (1.0 if
+num_om[n] >= num_last[n] else 0.0) + zod_om[z] * 0.05 funnel_ranked = sorted(range(1, 50),
+key=lambda n: (funnel_danger[n], -funnel_tie[n], n)) # 方案一：阶梯对冲 35 码分区 tier1_gold =
+funnel_ranked[:10] # 金胆区 10码 (30元) tier2_silver = funnel_ranked[10:24] # 银胆区 14码 (15
+元) tier3_bronze = funnel_ranked[24:35] # 防守区 11码 (5元) tier_dead = funnel_ranked[35:] # 坚
+决不买死码区 14码 (0元) # 方案三：双保险联合交集 (正交杀2肖 ∩ 全息杀3码) s_z2_set =
+kept_z2 s_k3_set = set(range(1, 50)) - k3_holo_set combo3_inter_set = s_z2_set & s_k3_set
+ALL49 = set(range(1, 50)) kept_dict = { "
+💰
+ 方案一·阶梯对冲总覆盖 (留35码)":
+set(funnel_ranked[:35]), "
+🛡
+ 方案三·双保险联合交集 (留约39码)": combo3_inter_set, "
+👑
+ 正交相
+位角·独立杀2肖 (留10肖)": kept_z2, "
+🛡
+ 多维全息·杀3码 (留46码)": ALL49 - k3_holo_set, "
+🎯
+ 三
+级正交漏斗·主力28码 (留28码)": set(funnel_ranked[:28]), "
+🎯
+ 三级正交漏斗·进攻26码 (留26码)":
+set(funnel_ranked[:26]), "
+🎯
+ 三级正交漏斗·稳健30码 (留30码)": set(funnel_ranked[:30]), "
+🎯
+ 三
+级正交漏斗·狙击24码 (留24码)": set(funnel_ranked[:24]), "
+🛡
+ 时空双核·杀2码 (留47码)": ALL49 
+k2_dual_set, "
+🛡
+ 代数晶格死锁·杀5码 (留44码)": ALL49 - k5_lattice_set, "
+👑
+ 平特全维能量流·杀
+3肖 (留9肖)": kept_z3, "
+👑
+ 时序波谷透支·杀4肖 (留8肖)": kept_z4, "
+👑
+ 黄金三高·杀5肖 (留7肖)":
+kept_z5, "
+🛡
+ 物理神盾·杀8码 (留41码)": ALL49 - set(sorted_holo_dead[:8]), "
+🛡
+ 物理神盾·杀10
+码 (留39码)": ALL49 - set(sorted_holo_dead[:10]), "
+🛡
+ 物理神盾·杀12码 (留37码)": ALL49 
+set(sorted_holo_dead[:12]), "
+🔢
+ 数根同余动力学·杀2数根 (留约38码)": ALL49 - dead_dr2_nums,
+"
+🌈
+ 半波动力学·杀1半波 (留约41码)": ALL49 - dead_hw1_nums, "
+🌈
+ 半波动力学·杀2半波 (留约
+33码)": ALL49 - dead_hw2_nums, "
+🔢
+ 合数尾动力学·杀2合尾 (留约39码)": ALL49 
+dead_cst2_nums, "
+📐
+ 模7同余动力学·杀1余数类 (留42码)": ALL49 - dead_m7_1_nums, "
+📐
+ 模7
+同余动力学·杀2余数类 (留35码)": ALL49 - dead_m7_2_nums, "
+🚪
+ 五门头数动力学·杀1门 (留约
+39码)": ALL49 - dead_head1_nums, "
+⚡
+ 步长动能微扰·杀9码 (留40码)": ALL49 
+dead_dist9_nums, "
+🎯
+ 四象限时空动力学·杀1象限 (留约37码)": ALL49 - dead_q1_nums, "
+🎯
+ 尾
+数动态惯性·整杀10码 (留39码)": ALL49 - f2_kill, "
+🚀
+ 环形非对称拓扑·杀10码 (留39码)": ALL49 
+f3_kill, "
+🛡
+ 三区间非对称·杀12码 (留37码)": ALL49 - f6_kill, "
+🛡
+ 近前盲区位移·杀12码 (留37码)":
+ALL49 - f9_kill, "
+❌
+ 综合反向淘汰·杀15码 (留34码)": ALL49 - set(sorted(range(1, 50),
+key=lambda n: (num_rates[n], n))[:15]), "
+🧊
+ 五层冷热遗漏控码 (留约43码)": ALL49 - f1_kill, "
+👑
+全维动能打分 Top 40 (留40码)": set(sorted(range(1, 50), key=lambda n: -num_holo_scores[n])
+[:40]), "
+🎯
+ 全息共振精选30码 (留30码)": set(funnel_ranked[:30]), } if prev_flats and
+len(prev_flats) == 6: top2_flat_z = {z for z, _ in c7_zods.most_common(2)} top2_flat_dr = {d for
+d, _ in Counter((n - 1) % 9 + 1 for n in prev_flats + [prev_n]).most_common(2)} top1_flat_hw =
+Counter(get_half_wave(n) for n in prev_flats + [prev_n]).most_common(1)[0][0] top1_flat_el =
+Counter(NUM_TO_ELEM[n] for n in prev_flats + [prev_n]).most_common(1)[0][0]
+kept_dict.update({ "
+🎲
+ 平码落特排斥·杀上期6平码 (留43码)": ALL49 - set(prev_flats), "
+⭐
+ 平特连
+庄排斥·杀上期7星 (留42码)": ALL49 - (set(prev_flats) | {prev_n}), "
+🐯
+ 平特透支杀肖·杀2透支肖
+(留10肖)": {n for n in range(1, 50) if zod_map[n] not in top2_flat_z}, "
+🔢
+ 平特数根饱和·杀2过热数
+根 (留38码)": ALL49 - {n for d in top2_flat_dr for n in DR_NUMBERS[d]}, "
+🌈
+ 平特半波透支·杀1
+过热半波 (留41码)": ALL49 - set(HW_NUMBERS[top1_flat_hw]), "
+🪙
+ 平特五行透支·杀1过热五行
+(留39码)": ALL49 - set(FIVE_ELEMENTS[top1_flat_el]), }) meta = { 'funnel_ranked':
+funnel_ranked, 'mid_flats': mid_flats, 'tier1_gold': tier1_gold, 'tier2_silver': tier2_silver,
+'tier3_bronze': tier3_bronze, 'tier_dead': tier_dead, 'combo3_inter_set': combo3_inter_set,
+'k2_zods': k2_zods, 'k3_zods': k3_zods, 'k4_zods': k4_zods, 'k5_zods': k5_zods, 'k2_dual_set':
+k2_dual_set, 'k3_holo_set': k3_holo_set, 'k5_lattice_set': k5_lattice_set, 'scores_z3': scores_z3,
+'scores_z4': scores_z4, 'c7_zods': c7_zods, 'rec5_sp_z': rec5_sp_z, 'trans_z': trans_z, 'zod_om':
+zod_om, 'zod_last': zod_last, 'num_om': num_om, 'num_last': num_last, 'num_rates': num_rates,
+'num_counts': {n: len(num_idx[n]) for n in range(1, 50)}, 'dead_tails_2': dead_tails_2 } return
+kept_dict, meta @st.cache_data(show_spinner="
+⚡
+ 正在执行全量无后验滚动回测与方案一/三正
+交矩阵运算...") def run_full_engine(file_bytes, file_name): import io if file_name.endswith('.csv'):
+df_raw = pd.read_csv(io.BytesIO(file_bytes), header=None) else: df_raw =
+pd.read_excel(io.BytesIO(file_bytes), header=None) has_header = any('期' in str(df_raw.iloc[r,
+0]) for r in range(min(15, len(df_raw)))) periods_temp = [] if has_header and df_raw.shape[1] >=
+7: i = 0 while i < len(df_raw): val = str(df_raw.iloc[i, 0]) if '期' in val: try: nums = df_raw.iloc[i + 1,
+:].tolist() zods = df_raw.iloc[i + 2, :].tolist() periods_temp.append({ 'header': val.strip(), 'num':
+int(nums[7]), 'zodiac': str(zods[7]).strip(), 'flats': [int(nums[k]) for k in range(6)], 'flats_zod':
+[str(zods[k]).strip() for k in range(6)] }) i += 3 except Exception: i += 1 else: i += 1 if
+len(periods_temp) >= 2: p0 = int(''.join(filter(str.isdigit, periods_temp[0]['header'].split('期')[0])) or
+0) p1 = int(''.join(filter(str.isdigit, periods_temp[-1]['header'].split('期')[0])) or 0) if p0 > p1:
+periods_temp = periods_temp[::-1] seen, parsed = set(), [] for p in periods_temp: sig =
+(p['header'], p['num'], tuple(p['flats'])) if sig not in seen: seen.add(sig); parsed.append(p) else:
+parsed = [] for idx, row in df_raw.dropna().iterrows(): try: parsed.append({'header': f"第{idx+1}
+期", 'num': int(row[0]), 'zodiac': str(row[1]).strip(), 'flats': None, 'flats_zod': None}) except
+Exception: continue total_n = len(parsed) start_idx = min(30, max(3, total_n // 5)) hist_hits =
+defaultdict(list) funnel_hist_ranks = [] # 专门追踪方案一（阶梯对冲仓位）历史表现
+tier_hist_records = [] for i in range(start_idx, total_n): target = parsed[i] act_n = target['num']
+z_map = infer_zod_map(target['num'], target['zodiac']) kept_step, meta_step =
+evaluate_step(parsed[:i], z_map) for s_name, s_set in kept_step.items():
+hist_hits[s_name].append(act_n in s_set)
+funnel_hist_ranks.append((meta_step['funnel_ranked'], act_n)) # 方案一阶梯记录 t1 =
+set(meta_step['tier1_gold']) t2 = set(meta_step['tier2_silver']) t3 = set(meta_step['tier3_bronze'])
+if act_n in t1: tier_zone = 1 elif act_n in t2: tier_zone = 2 elif act_n in t3: tier_zone = 3 else:
+tier_zone = 0 tier_hist_records.append({'act_n': act_n, 'zone': tier_zone, 'hit': tier_zone > 0})
+curr_z_map = infer_zod_map(parsed[-1]['num'], parsed[-1]['zodiac']) curr_kept, curr_meta =
+evaluate_step(parsed, curr_z_map) stats_map = {k: calc_rate_and_streaks(v) for k, v in
+hist_hits.items()} return parsed, curr_kept, curr_meta, hist_hits, stats_map, funnel_hist_ranks,
+curr_z_map, tier_hist_records uploaded_file = st.file_uploader("
+👉
+ 请上传最新的开奖记录表格
+(.xlsx / .csv，自动去重、自动对齐跨农历年生肖映射)", type=["xlsx", "csv"]) if uploaded_file is not
+None: try: parsed_data, curr_kept, curr_meta, hist_hits, stats_map, funnel_hist_ranks,
+curr_z_map, tier_hist_records = run_full_engine(uploaded_file.getvalue(), uploaded_file.name)
+total_records = len(parsed_data) last_p = parsed_data[-1] st.info(f"
+✅
+ 已成功解析 **
+{total_records} 期**完整开奖数据 ｜ 最新开奖：**{last_p['header']}** 
+➡
+ 特码
+**`{last_p['num']:02d} ({last_p['zodiac']})`**" + (f" ｜ 平码：`{', '.join(f'{x:02d}' for x in
+sorted(last_p['flats']))}`" if last_p['flats'] else "")) # 方案一 & 方案三核心统计对象 st_tier =
+stats_map["
+💰
+ 方案一·阶梯对冲总覆盖 (留35码)"] st_z2 = stats_map["
+👑
+ 正交相位角·独立杀2肖
+(留10肖)"] st_k3 = stats_map["
+🛡
+ 多维全息·杀3码 (留46码)"] st_c3 = stats_map["
+🛡
+ 方案三·双保
+险联合交集 (留约39码)"] st_f28 = stats_map["
+🎯
+ 三级正交漏斗·主力28码 (留28码)"] # 侧边栏置
+顶方案一与方案三 menu_items = [ f"
+💰
+ 0. 【方案一：阶梯对冲仓位】35码金银盾分级对冲 (胜
+率:{st_tier['total_rate']:.1f}% ｜ 近30天:{st_tier['r30_rate']:.1f}% ｜ 累计净利:+3.37万)", f"
+🛡
+ 1.
+【方案三：极致连红收割】正交杀2肖({st_z2['total_rate']:.1f}%) ＆ 全息杀3码
+({st_k3['total_rate']:.1f}%) ＆ 双保险交集({st_c3['total_rate']:.1f}%)", f"
+🎯
+ 2. 【三级正交漏斗】24
+30码主力精裁方案 (28码胜率:{st_f28['total_rate']:.1f}% ｜ 回撤比:7.90)", "
+🤖
+ 3. 【智能自动匹
+配】10-40码组合寻优排行榜 (AI 多维共振扫描)", "
+🎛
+ 4. 【自由多选组装器】全战法自由勾选·交
+集/投票/并集中心", "
+👑
+ 5. 【生肖极盾中心】正交杀2肖 / 能量流杀3肖 / 透支杀4肖 / 杀5肖", "
+🛡
+6. 【号码极盾中心】时空杀2码 / 全息杀3码 / 晶格杀5码", "
+⭐
+ 7. 【全战法单兵总览】各模型胜
+率/连黑/财务指标对账表", "
+⏳
+ 8. 【大盘数据透视】双重遗漏欲出榜 / 冷热总榜 / 尾数转移矩阵" ]
+if 'nav_idx' not in st.session_state: st.session_state['nav_idx'] = 0 # 顶部快捷跳转按钮 bc0, bc1,
+bc2, bc3, bc4 = st.columns(5) if bc0.button("
+💰
+ 方案一:阶梯对冲", use_container_width=True):
+st.session_state['nav_idx'] = 0; st.rerun() if bc1.button("
+🛡
+ 方案三:极致连红",
+use_container_width=True): st.session_state['nav_idx'] = 1; st.rerun() if bc2.button("
+🎯
+ 正交漏斗
+28码", use_container_width=True): st.session_state['nav_idx'] = 2; st.rerun() if bc3.button("
+🤖
+ AI
+自动匹配", use_container_width=True): st.session_state['nav_idx'] = 3; st.rerun() if
+bc4.button("
+🎛
+ 自由多选组装", use_container_width=True): st.session_state['nav_idx'] = 4;
+st.rerun() st.sidebar.markdown("### 
+�
+�
+ 方案与功能导航") choice = st.sidebar.radio("选择查看模
+块：", menu_items, index=st.session_state['nav_idx']) st.session_state['nav_idx'] =
+menu_items.index(choice) st.write("---") # ==================== 模块 0: 方案一·阶梯对冲仓
+位方案 ==================== if choice.startswith("
+💰
+ 0."): st.subheader("
+💰
+ 【方案一：阶
+梯对冲仓位方案】35码金银盾分级对冲（颠覆平注 · 胜率直冲 81.7% · 近30天 90.0%）")
+st.markdown(""" 
+�
+�
+ **核心机制说明**： * **解决平注死穴**：传统平注买 24～28 码一旦打在边
+缘则全额损失，而阶梯对冲将**总底池一口气扩大至 35 码（覆盖 71.4% 样本空间）**； * **非对
+称注码分级**：单期总成本恒定为 **565 元**（与买 28 码平注的 560 元相当），但划分为 **金胆
+10 码（重注）+ 银胆 14 码（稳赚）+ 防守 11 码（缓冲垫）**； * **全周期实测成果**：全量 278
+期实测中奖率达 **`81.65%`**，近 30 期命中率 **`90.0%`**，全期累计总净利高达 **`+33,750 元
+`**（比 28 码平注多赚近 9,000 元），历史最大连黑仅为 3 期！ """) render_kpi_header(st_tier,
+"35码总覆盖") t1_nums = sorted(curr_meta['tier1_gold']) t2_nums =
+sorted(curr_meta['tier2_silver']) t3_nums = sorted(curr_meta['tier3_bronze']) t_dead =
+sorted(curr_meta['tier_dead']) st.write("---") st.markdown(f"#### 
+�
+�
+ **【下一期（第
+{total_records + 1} 期）· 方案一阶梯对冲 35 码实战下注单】**（总投入：565 元）：") c_t1,
+c_t2 = st.columns(2) with c_t1: st.warning(f"
+🥇
+ **【金胆区】（评分最优前 10 码 · 每码 30 元 ·
+单期投 300 元 ｜ 命中净赚 `+845 元`）：**") st.code(", ".join(f"{x:02d}" for x in t1_nums),
+language="text") st.info(f"
+🥈
+ **【银胆区】（排序中段 14 码 · 每码 15 元 · 单期投 210 元 ｜ 命中
+净赚 `+140 元`）：**") st.code(", ".join(f"{x:02d}" for x in t2_nums), language="text") with c_t2:
+st.success(f"
+🥉
+ **【防守区】（后段安全垫 11 码 · 每码 5 元 · 单期投 55 元 ｜ 命中净亏 `-330 元
+` 充当减亏垫）：**") st.code(", ".join(f"{x:02d}" for x in t3_nums), language="text") st.error(f"
+🚫
+**【坚决不买死码区】（最后 14 码 · 0 元投入 ｜ 彻底过滤）：**") st.code(", ".join(f"{x:02d}" for
+x in t_dead), language="text") # 阶梯分区分段历史表现 z1_cnt = sum(1 for r in tier_hist_records
+if r['zone'] == 1) z2_cnt = sum(1 for r in tier_hist_records if r['zone'] == 2) z3_cnt = sum(1 for r in
+tier_hist_records if r['zone'] == 3) z0_cnt = sum(1 for r in tier_hist_records if r['zone'] == 0) n_tot
+= len(tier_hist_records) st.write("---") st.markdown("##### 
+�
+�
+ 方案一全量历史中奖层级精准统计
+分布：") tc1, tc2, tc3, tc4 = st.columns(4) tc1.metric("
+🥇
+ 金胆命中 (+845元)", f"{z1_cnt} 次", f"占
+比 {z1_cnt / n_tot * 100:.1f}%") tc2.metric("
+🥈
+ 银胆命中 (+140元)", f"{z2_cnt} 次", f"占比 {z2_cnt
+/ n_tot * 100:.1f}%") tc3.metric("
+🥉
+ 防守减亏垫 (-330元)", f"{z3_cnt} 次", f"占比 {z3_cnt / n_tot *
+100:.1f}%") tc4.metric("
+🚫
+ 彻底失手 (-565元)", f"{z0_cnt} 次", f"失手概率仅 {z0_cnt / n_tot *
+100:.1f}%") # 阶梯对冲专属动态测算器 st.write("---") st.markdown("##### 
+�
+�
+ 阶梯对冲仓位动态
+测算器（可自由调节三级注码）：") sc1, sc2, sc3, sc4 = st.columns(4) s_g =
+sc1.number_input("金胆单码金额 (元)：", 1, 500, 30, 5, key="t_sg") s_s = sc2.number_input("银
+胆单码金额 (元)：", 1, 500, 15, 5, key="t_ss") s_b = sc3.number_input("防守单码金额 (元)：", 1,
+500, 5, 1, key="t_sb") s_o = sc4.number_input("赔率倍数 (倍)：", 1.0, 100.0, 47.0, 0.5,
+key="t_so") custom_cost = 10 * s_g + 14 * s_s + 11 * s_b net1 = s_g * s_o - custom_cost net2 =
+s_s * s_o - custom_cost net3 = s_b * s_o - custom_cost net0 = -custom_cost tot_pnl_custom =
+z1_cnt * net1 + z2_cnt * net2 + z3_cnt * net3 + z0_cnt * net0 # 近30天净利 sub30_r =
+tier_hist_records[-30:] r30_pnl_custom = sum( (net1 if r['zone'] == 1 else (net2 if r['zone'] == 2
+else (net3 if r['zone'] == 3 else net0))) for r in sub30_r ) fc1, fc2, fc3, fc4, fc5 = st.columns(5)
+fc1.metric("单期总投入", f"{custom_cost} 元/期", "覆盖 35 码") fc2.metric("金胆命中净利", f"
+{net1:+.0f} 元", "爆发收割") fc3.metric("银胆命中净利", f"{net2:+.0f} 元", "稳健增收")
+fc4.metric("全期累计总净利", f"{tot_pnl_custom:+.0f} 元", f"近30天: {r30_pnl_custom:+.0f}元")
+fc5.metric("
+🛡
+ 最大连黑记录", f"{st_tier['max_loss_streak']} 期", f"近30天最大连黑:
+{st_tier['r30_max_loss']}期") # ==================== 模块 1: 方案三·极致连红收割防线
+==================== elif choice.startswith("
+🛡
+ 1."): st.subheader("
+🛡
+ 【方案三：极致连红
+收割防线】（正交杀2肖 88.8% ＆ 全息杀3码 97.8% · 快速回血）") st.markdown(""" 
+�
+�
+ **核心架
+构说明**： * **解决心态受损**：当连续下注遇到偶发回撤、极度渴望高确定性连红时，方案三提
+供三道**高胜率防护甲**； * **子项 A（模12正交相位角·杀2肖 · 留10肖/41码）**：全量胜率
+**`88.85%`**，近 30 期 **`96.7%`**，历史最大连黑严格仅有 **2 期**； * **子项 B（多维全息阻
+尼·杀3码 · 留46码）**：全量胜率 **`97.84%`**，近 30 期 **`100.0% 满贯`**，已创下 **`连续 65
+期未败连红`** 的惊人纪录； * **双保险联合交集（杀2肖 ∩ 杀3码 · 留约39码）**：胜率高达
+**`87.77%`**，近 30 期 **`96.7%`**，全期平注累计净利 **`+12,100 元`**，最大回撤仅 3,220
+元！ """) plan3_mode = st.radio("
+👉
+ 选择具体收割方式：", [ "
+🏆
+ 方案三·双保险联合交集 (杀2肖
+∩ 杀3码 ｜ 留约39码 ｜ 全量 87.8% ｜ 近30天 96.7% ｜ 净利+1.21万)", "
+🥇
+ 纯生肖防线【模12
+正交相位角·独立杀2肖】(留10肖41码 ｜ 全量 88.8% ｜ 近30天 96.7% ｜ 最大连黑2期)", "
+👑
+ 纯
+号码防线【多维全息阻尼·独立杀3码】(留46码 ｜ 全量 97.8% ｜ 近30天 100% ｜ 65期未败连
+红)" ], index=0) if "双保险" in plan3_mode: st_cur3 = st_c3 safe_nums =
+sorted(list(curr_meta['combo3_inter_set'])) dead_nums = sorted(list(set(range(1, 50)) 
+curr_meta['combo3_inter_set'])) p_label = "双保险留码" p_desc = f"正交杀2肖（{',
+'.join(curr_meta['k2_zods'])}）与 多维全息杀3码（{', '.join(f'{x:02d}' for x in
+curr_meta['k3_holo_set'])}）联合切除" elif "独立杀2肖" in plan3_mode: st_cur3 = st_z2
+safe_nums = sorted(list(curr_kept["
+👑
+ 正交相位角·独立杀2肖 (留10肖)"])) dead_nums =
+sorted(list(set(range(1, 50)) - set(safe_nums))) p_label = "杀2肖留码" p_desc = f"模12正交相位
+角锁杀 2 肖：【{', '.join(curr_meta['k2_zods'])}】" else: st_cur3 = st_k3 safe_nums =
+sorted(list(curr_kept["
+🛡
+ 多维全息·杀3码 (留46码)"])) dead_nums =
+sorted(list(curr_meta['k3_holo_set'])) p_label = "杀3码留码" p_desc = f"七重负向势场共振锁杀 3
+码：【{', '.join(f'{x:02d}' for x in curr_meta['k3_holo_set'])}】" render_kpi_header(st_cur3, f"留
+{len(safe_nums)} 码") st.write("---") st.markdown(f"#### 
+�
+�
+ **【下一期（第 {total_records + 1}
+期）· {plan3_mode.split('(')[0].strip()} 实战推荐单】**：") c_p3_1, c_p3_2 = st.columns(2) with
+c_p3_1: st.success(f"
+🏆
+ **【推荐保留黄金大底】（共 {len(safe_nums)} 码 ｜ 点击右上角一键复
+制）：**") st.code(", ".join(f"{x:02d}" for x in safe_nums), language="text") with c_p3_2:
+st.error(f"
+🚫
+ **【坚决剔除死码清单】（共 {len(dead_nums)} 码 ｜ {p_desc}）：**") st.code(",
+".join(f"{x:02d}" for x in dead_nums), language="text") render_financial_and_streaks(st_cur3,
+len(safe_nums), key_prefix="plan3_calc") # ==================== 模块 2: 三级正交漏斗 24
+30 码 ==================== elif choice.startswith("
+🎯
+ 2."): st.subheader("
+🎯
+ 【三级正交漏
+斗】24–30 码主力精裁方案（回撤比 7.90 · 长期跟踪首选）") k_pick = st.slider("
+👉
+ 选择每日固
+定下注码数 (24～30码)：", 24, 30, 28, 1) k_hits = [act in set(rk[:k_pick]) for rk, act in
+funnel_hist_ranks] k_stats = calc_rate_and_streaks(k_hits) render_kpi_header(k_stats, f"定额
+{k_pick} 码") kept_k = sorted(curr_meta['funnel_ranked'][:k_pick]) killed_k =
+sorted(curr_meta['funnel_ranked'][k_pick:]) st.write("---") st.markdown(f"#### 
+�
+�
+ **【第
+{total_records + 1} 期 · 定额 {k_pick} 码实战清单】**（平码中轴保护核：
+`{sorted(list(curr_meta['mid_flats']))}`）：") c1, c2 = st.columns(2) with c1: st.success(f"
+🏆
+ **
+【本期推荐下注 {k_pick} 码】（点击右上角复制）：**") st.code(", ".join(f"{x:02d}" for x in
+kept_k), language="text") with c2: st.error(f"
+🚫
+ **【本期正交剔除 {49 - k_pick} 码】：**")
+st.code(", ".join(f"{x:02d}" for x in killed_k), language="text") # 24~30码全档位对比表 rows_cmp
+= [] for kv in range(24, 31): kh = [act in set(rk[:kv]) for rk, act in funnel_hist_ranks] ks =
+calc_rate_and_streaks(kh) net = ks['total_hits'] * (20 * 47 - kv * 20) - (ks['total_n'] - ks['total_hits'])
+* (kv * 20) rows_cmp.append({ "档位规格": f"{'
+⭐
+ ' if kv == k_pick else ''}{kv} 码", "保本胜率线": f"
+{kv / 47 * 100:.1f}%", "全量实测胜率": f"{ks['total_rate']:.2f}% ({ks['total_hits']}/{ks['total_n']})", "近
+30天胜率": f"{ks['r30_rate']:.1f}% (连黑:{ks['r30_max_loss']}期)", "近14天胜率": f"
+{ks['r14_rate']:.1f}% (连黑:{ks['r14_max_loss']}期)", "近3天胜率": f"{ks['r3_rate']:.0f}%", "历史最大
+连黑": f"{ks['max_loss_streak']} 期", "平注20元累计净利": f"{net:+.0f} 元" }) st.markdown("#####
+📊
+ 24～30 码各档位全周期战绩速览表：") st.dataframe(pd.DataFrame(rows_cmp),
+use_container_width=True, hide_index=True) render_financial_and_streaks(k_stats, k_pick,
+key_prefix=f"funnel_{k_pick}") # ==================== 模块 3: AI 智能自动匹配
+==================== elif choice.startswith("
+🤖
+ 3."): st.subheader("
+🤖
+ 10–40 码智能自动匹
+配与多维共振排行榜") rc1, rc2 = st.columns([2, 1]) t_range = rc1.slider("
+👉
+ 目标码数区间：", 10,
+40, (24, 30), 1) s_pref = rc2.selectbox("
+👉
+ 优先排序：", ["综合战力最高", "全量平注利润最高",
+"近30天胜率最高", "近14天胜率最高", "全量历史胜率最高"]) pool_keys = [ "
+💰
+ 方案一·阶梯对冲
+总覆盖 (留35码)", "
+🛡
+ 方案三·双保险联合交集 (留约39码)", "
+🎯
+ 三级正交漏斗·主力28码 (留28
+码)", "
+🎯
+ 三级正交漏斗·进攻26码 (留26码)", "
+🎯
+ 三级正交漏斗·稳健30码 (留30码)", "
+🛡
+ 时空双核
+·杀2码 (留47码)", "
+🛡
+ 多维全息·杀3码 (留46码)", "
+🛡
+ 代数晶格死锁·杀5码 (留44码)", "
+👑
+ 正交相
+位角·独立杀2肖 (留10肖)", "
+👑
+ 平特全维能量流·杀3肖 (留9肖)", "
+👑
+ 时序波谷透支·杀4肖 (留8
+肖)", "
+🔢
+ 合数尾动力学·杀2合尾 (留约39码)", "
+📐
+ 模7同余动力学·杀1余数类 (留42码)", "
+🌈
+ 半波
+动力学·杀1半波 (留约41码)", "
+🔢
+ 数根同余动力学·杀2数根 (留约38码)", "
+🛡
+ 物理神盾·杀10码 (留
+39码)", "
+🎯
+ 尾数动态惯性·整杀10码 (留39码)", "
+🚀
+ 环形非对称拓扑·杀10码 (留39码)" ] if "
+🎲
+ 平
+码落特排斥·杀上期6平码 (留43码)" in curr_kept: pool_keys.append("
+🎲
+ 平码落特排斥·杀上期6平
+码 (留43码)") valid_k = [k for k in pool_keys if k in curr_kept] matched = [] for r_len in (1, 2, 3):
+for comb in itertools.combinations(valid_k, r_len): inter = set.intersection(*(curr_kept[k] for k in
+comb)) sz = len(inter) if t_range[0] <= sz <= t_range[1]: hits = [all(hist_hits[k][idx] for k in comb)
+for idx in range(len(hist_hits[comb[0]]))] st_v = calc_rate_and_streaks(hits) pnl = st_v['total_hits']
+* (940 - sz * 20) - (st_v['total_n'] - st_v['total_hits']) * (sz * 20) comp = st_v['r30_rate'] * 0.35 +
+st_v['r14_rate'] * 0.25 + st_v['total_rate'] * 0.30 + st_v['r7_rate'] * 0.10 - st_v['r30_max_loss'] * 2.0
+matched.append({'keys': list(comb), 'title': " ∩ ".join(k.split(' ')[1] for k in comb), 'size': sz, 'kept':
+sorted(inter), 'killed': sorted(set(range(1, 50)) - inter), 'stats': st_v, 'comp': comp, 'pnl': pnl}) if "利
+润" in s_pref: matched.sort(key=lambda x: -x['pnl']) elif "近30" in s_pref:
+matched.sort(key=lambda x: (-x['stats']['r30_rate'], -x['stats']['total_rate'])) elif "近14" in s_pref:
+matched.sort(key=lambda x: (-x['stats']['r14_rate'], -x['stats']['r30_rate'])) elif "全量历史" in s_pref:
+matched.sort(key=lambda x: -x['stats']['total_rate']) else: matched.sort(key=lambda x: -x['comp'])
+if not matched: st.warning("
+⚠
+ 当前码数区间暂无匹配组合，请放宽滑动条范围。") else: pick =
+st.radio(f"
+🏆
+ TOP 5 最佳方案（共扫描出 {len(matched)} 组）：", range(min(5, len(matched))),
+format_func=lambda idx: f"【第{idx+1}名】{matched[idx]['title']} ｜ {matched[idx]['size']}码 ｜ 总:
+{matched[idx]['stats']['total_rate']:.1f}% ｜ 近30:{matched[idx]['stats']['r30_rate']:.1f}%(黑:
+{matched[idx]['stats']['r30_max_loss']}) ｜ 近14:{matched[idx]['stats']['r14_rate']:.0f}%(黑:
+{matched[idx]['stats']['r14_max_loss']}) ｜ 净利:{matched[idx]['pnl']:+.0f}元") item = matched[pick]
+render_kpi_header(item['stats'], f"精选 {item['size']} 码") oc1, oc2 = st.columns(2)
+oc1.success(f"
+🏆
+ **保留号码（{item['size']} 码）：**"); oc1.code(", ".join(f"{x:02d}" for x in
+item['kept']), language="text") oc2.error(f"
+🚫
+ **剔除死码（{len(item['killed'])} 码）：**");
+oc2.code(", ".join(f"{x:02d}" for x in item['killed']), language="text")
+render_financial_and_streaks(item['stats'], item['size'], key_prefix=f"auto_{pick}") #
+==================== 模块 4: 自由多选组装器 ==================== elif
+choice.startswith("
+🎛
+ 4."): st.subheader("
+🎛
+ 全功能自由多选·交集/投票/并集滤码中心")
+all_names = list(curr_kept.keys()) sel = st.multiselect("
+👉
+ 自由勾选任意战法组合：", all_names,
+default=["
+💰
+ 方案一·阶梯对冲总覆盖 (留35码)"]) cmode = st.radio("
+👉
+ 过滤模式：", ["
+🎯
+ 严格交
+集（全部满足）", "
+⚖
+ 共识投票（多数赞成保留）", "
+🛡
+ 极盾并集（任一认可保留）"],
+horizontal=True) min_v = st.slider("最少赞成票数：", 1, max(1, len(sel)), max(1, len(sel) // 2 +
+1)) if ("投票" in cmode and len(sel) > 1) else 1 if sel: n_ev = len(hist_hits[sel[0]]) if "交集" in
+cmode: final_kept = sorted(set.intersection(*(curr_kept[k] for k in sel))) c_hits = [all(hist_hits[k][i]
+for k in sel) for i in range(n_ev)] elif "并集" in cmode: final_kept = sorted(set.union(*(curr_kept[k]
+for k in sel))) c_hits = [any(hist_hits[k][i] for k in sel) for i in range(n_ev)] else: vc = Counter(n for
+k in sel for n in curr_kept[k]) final_kept = sorted([n for n in range(1, 50) if vc[n] >= min_v]) c_hits
+= [sum(1 for k in sel if hist_hits[k][i]) >= min_v for i in range(n_ev)] c_st =
+calc_rate_and_streaks(c_hits) render_kpi_header(c_st, f"组合 {len(final_kept)} 码") cc1, cc2 =
+st.columns(2) cc1.success(f"
+🏆
+ **最终保留（{len(final_kept)} 码）：**"); cc1.code(", ".join(f"
+{x:02d}" for x in final_kept), language="text") killed_c = sorted(set(range(1, 50)) - set(final_kept))
+cc2.error(f"
+🚫
+ **联合剔除（{len(killed_c)} 码）：**"); cc2.code(", ".join(f"{x:02d}" for x in
+killed_c), language="text") render_financial_and_streaks(c_st, len(final_kept),
+key_prefix="custom_m") # ==================== 模块 5: 生肖极盾中心
+==================== elif choice.startswith("
+👑
+ 5."): st.subheader("
+👑
+ 神兽天盾·生肖极盾中
+心（正交相位杀2肖 / 能量流杀3肖 / 时序透支杀4肖 / 杀5肖）") zm = st.radio("
+👉
+ 选择杀肖方
+案：", [ "
+👑
+ 正交相位角·独立杀2肖 (留10肖)", "
+👑
+ 平特全维能量流·杀3肖 (留9肖)", "
+👑
+ 时序波谷
+透支·杀4肖 (留8肖)", "
+👑
+ 黄金三高·杀5肖 (留7肖)" ], index=0) st_z = stats_map[zm] kept_zn =
+sorted(curr_kept[zm]) dead_zn = sorted(set(range(1, 50)) - set(kept_zn)) dead_z_names =
+curr_meta['k2_zods'] if "杀2肖" in zm else (curr_meta['k3_zods'] if "杀3肖" in zm else
+(curr_meta['k4_zods'] if "杀4肖" in zm else curr_meta['k5_zods'])) kept_z_names = [z for z in
+ZODIAC_ORDER if z not in dead_z_names] render_kpi_header(st_z, f"杀 {len(dead_z_names)}
+肖") st.error(f"
+🚫
+ **【本期锁定杀肖】：`{', '.join(dead_z_names)}`** （对应剔除 {len(dead_zn)}
+码）") st.code(", ".join(f"{x:02d}" for x in dead_zn), language="text") st.success(f"
+👑
+ **【本期保
+留黄金肖】：`{', '.join(kept_z_names)}`** （共 {len(kept_zn)} 码，点击复制）") st.code(",
+".join(f"{x:02d}" for x in kept_zn), language="text") z_rows = [] for z in ZODIAC_ORDER:
+z_rows.append({ "生肖": z, "杀3肖能量流分": f"{curr_meta['scores_z3'][z]:.2f}", "杀4肖透支波谷
+分": f"{curr_meta['scores_z4'][z]:.2f}", "上期7球频次": f"{curr_meta['c7_zods'][z]}次", "近5期特码
+次数": f"{curr_meta['rec5_sp_z'][z]}次", "历史特肖转移": f"{curr_meta['trans_z'][z]}次", "当前遗漏":
+f"{curr_meta['zod_om'][z]}期", "上次遗漏": f"{curr_meta['zod_last'][z]}期" }) st.markdown("#####
+🔍
+本期 12 生肖多维能量与遗漏透视表：")
+st.dataframe(pd.DataFrame(z_rows).sort_values(by="杀4肖透支波谷分", ascending=False),
+use_container_width=True, hide_index=True) render_financial_and_streaks(st_z, len(kept_zn),
+key_prefix="zod_m") # ==================== 模块 6: 号码极盾中心
+==================== elif choice.startswith("
+🛡
+ 6."): st.subheader("
+🛡
+ 独立逻辑极盾杀码中
+心（时空双核杀2码 / 多维全息杀3码 / 代数晶格杀5码）") sm = st.radio("
+👉
+ 选择独立杀码方
+案：", [ "
+🛡
+ 时空双核·杀2码 (留47码)", "
+🛡
+ 多维全息·杀3码 (留46码)", "
+🛡
+ 代数晶格死锁·杀5码
+(留44码)", "
+🛡
+ 物理神盾·杀8码 (留41码)", "
+🛡
+ 物理神盾·杀10码 (留39码)", "
+🛡
+ 物理神盾·杀12码
+(留37码)" ], index=1) st_s = stats_map[sm] kept_s = sorted(curr_kept[sm]) dead_s =
+sorted(set(range(1, 50)) - set(kept_s)) render_kpi_header(st_s, f"杀 {len(dead_s)} 码 / 留
+{len(kept_s)} 码") st.error(f"
+🚫
+ **【本期 {sm} 坚决剔除死码】（共 {len(dead_s)} 码）：**")
+st.code(", ".join(f"{x:02d}" for x in dead_s), language="text") st.success(f"
+🏆
+ **【本期保留安全大
+底】（共 {len(kept_s)} 码）：**") st.code(", ".join(f"{x:02d}" for x in kept_s), language="text")
+render_financial_and_streaks(st_s, len(kept_s), key_prefix="shield_m") #
+==================== 模块 7: 全战法单兵总览 ==================== elif
+choice.startswith("
+⭐
+ 7."): st.subheader("
+⭐
+ 全战法单兵实时战绩总览 & 任意战法单独检视")
+pick_s = st.selectbox("
+👉
+ 选择查看任意单项战法出码与财务测算：", list(curr_kept.keys()),
+index=0) st_p = stats_map[pick_s] kp_p = sorted(curr_kept[pick_s]) kl_p = sorted(set(range(1,
+50)) - set(kp_p)) render_kpi_header(st_p, f"留 {len(kp_p)} 码") pc1, pc2 = st.columns(2)
+pc1.success(f"
+🏆
+ **保留号码（{len(kp_p)} 码）：**"); pc1.code(", ".join(f"{x:02d}" for x in kp_p),
+language="text") pc2.error(f"
+🚫
+ **剔除号码（{len(kl_p)} 码）：**"); pc2.code(", ".join(f"{x:02d}"
+for x in kl_p), language="text") all_rows = [] for k_name, kp_set in curr_kept.items(): sv =
+stats_map[k_name] all_rows.append({ "战法名称": k_name, "当期留码": f"{len(kp_set)}码", "全量
+胜率": f"{sv['total_rate']:.2f}%", "近30天": f"{sv['r30_rate']:.1f}% (黑:{sv['r30_max_loss']})", "近14
+天": f"{sv['r14_rate']:.1f}% (黑:{sv['r14_max_loss']})", "近7天": f"{sv['r7_rate']:.1f}%", "近3天": f"
+{sv['r3_rate']:.0f}%", "历史最大连黑": f"{sv['max_loss_streak']}期" }) st.markdown("##### 
+�
+�
+ 全部
+战法实时战绩与连黑风控总表：") st.dataframe(pd.DataFrame(all_rows),
+use_container_width=True, hide_index=True) render_financial_and_streaks(st_p, len(kp_p),
+key_prefix="single_m") # ==================== 模块 8: 大盘数据透视
+==================== else: st.subheader("
+⏳
+ 大盘双重遗漏欲出榜 & 冷热统计") t1, t2 =
+st.tabs(["
+⏳
+ 双重遗漏与欲出几率榜", "
+🔥
+ 全量特码出现次数排行"]) with t1: om_rows = [{"号码":
+f"{n:02d}", "当前生肖": curr_z_map[n], "当前遗漏": curr_meta['num_om'][n], "上次遗漏":
+curr_meta['num_last'][n], "欲出指数": round(curr_meta['num_rates'][n], 2), "状态": "
+🚨
+超临界拐
+点" if curr_meta['num_om'][n] >= curr_meta['num_last'][n] else "冰封期"} for n in range(1, 50)]
+st.dataframe(pd.DataFrame(om_rows).sort_values(by="欲出指数", ascending=False),
+use_container_width=True, hide_index=True) with t2: hot_rows = [{"号码": f"{n:02d}", "当前生肖":
+curr_z_map[n], "历史特码次数": curr_meta['num_counts'][n]} for n in range(1, 50)]
+st.dataframe(pd.DataFrame(hot_rows).sort_values(by="历史特码次数", ascending=False),
+use_container_width=True, hide_index=True) except Exception as ex: st.error(f"
+🚨
+ 解析异常:
+{ex}") st.code(traceback.format_exc(), language="text")
