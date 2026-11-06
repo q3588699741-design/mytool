@@ -1509,8 +1509,9 @@ if uploaded_file is not None:
                 "desc": "7球极端扎堆过热五行整杀，全量胜率 76.6%，近7天 100%"
             }
 
-        # 智能自动匹配 ＆ 抄底拐点寻优扫描函数 (融合均值回归与反弹算法)
-        def scan_auto_recommended_combos(min_c=27, max_c=28):
+        # 智能自动匹配 ＆ 抄底拐点寻优扫描函数 (放开码数死锁 · 优先完整大底 · 剔除粗暴切段)
+        def scan_auto_recommended_combos(min_c=15, max_c=38):
+            # 纳入完整旗舰抄底大底与经典正交大底，剔除粗暴连续盲区战法(如环形拓扑、五门头数)防止误杀边界码
             scanner_pool_keys = [
                 "🥇 抄底组合一·能量流3肖 ∩ 时序4肖 ∩ 晶格5码 (留28码)",
                 "🥈 抄底组合二·时序4肖 ∩ 晶格5码 ∩ 物理8码 (留28码)",
@@ -1529,11 +1530,8 @@ if uploaded_file is not None:
                 "🛡️ 物理神盾·杀12码 (留37码)",
                 "🔢 和数尾动力学·杀2合尾 (留约39码)",
                 "📐 模7同余动力学·杀1余数类 (留42码)",
-                "门 五门头数动力学·杀1门 (留约39码)",
                 "⚡ 步长动能微扰排斥·杀9码 (留40码)",
-                "🎯 四象限时空动力学·杀1象限 (留约37码)",
                 "🎯 尾数动态惯性整杀10码 (留39码)",
-                "🚀 非对称环形拓扑位移杀10码 (留39码)",
                 "🛡️ 三区间非对称杀12码 (留37码)",
                 "🎯 全息共振精选30码 (方案一)"
             ]
@@ -1544,15 +1542,56 @@ if uploaded_file is not None:
             valid_keys = [k for k in scanner_pool_keys if k in available_strategy_dict]
             matched = []
 
-            for r_len in (1, 2, 3):
-                for comb in itertools.combinations(valid_keys, r_len):
+            # 1. 优先扫描独立的完整旗舰方案 (r_len = 1)
+            for k in valid_keys:
+                s_info = available_strategy_dict[k]
+                curr_kept = s_info['curr_kept']
+                sz = len(curr_kept)
+                if min_c <= sz <= max_c:
+                    hits = s_info['hist']
+                    st_val = calc_rate_and_streaks(hits)
+                    cl = 0
+                    for h in reversed(hits):
+                        if not h: cl += 1
+                        else: break
+                    cw = 0
+                    for h in reversed(hits):
+                        if h: cw += 1
+                        else: break
+                    after_1l = [hits[idx_t] for idx_t in range(1, len(hits)) if not hits[idx_t-1]]
+                    reb_rate = (sum(after_1l) / len(after_1l) * 100) if after_1l else 0.0
+
+                    # 完整大底享有专属完整度加权 (+15.0分)，防止被杂乱组合取代
+                    dip_score = st_val['total_rate'] + 15.0
+                    if cl == 1: dip_score += 20.0
+                    elif cl == 2: dip_score += 30.0
+                    elif cw == 1: dip_score += 12.0
+                    elif cw >= 4: dip_score -= (cw - 3) * 4.0
+
+                    matched.append({
+                        'keys': [k],
+                        'title': k.split(' ')[1] if len(k.split(' ')) > 1 else k,
+                        'full_title': k,
+                        'size': sz,
+                        'curr_kept': sorted(list(curr_kept)),
+                        'curr_killed': sorted(list(set(range(1, 50)) - curr_kept)),
+                        'stats': st_val,
+                        'cl': cl,
+                        'cw': cw,
+                        'reb_rate': reb_rate,
+                        'dip_score': dip_score,
+                        'comp': st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
+                    })
+
+            # 2. 扫描基础单兵战法正交组合 (r_len = 2, 3)
+            atomic_keys = [k for k in valid_keys if not k.startswith(("🥇", "🥈", "🥉", "⭐ 抄底"))]
+            for r_len in (2, 3):
+                for comb in itertools.combinations(atomic_keys, r_len):
                     curr_inter = set.intersection(*(available_strategy_dict[k]['curr_kept'] for k in comb))
                     sz = len(curr_inter)
                     if min_c <= sz <= max_c:
                         hits = [all(available_strategy_dict[k]['hist'][idx_t] for k in comb) for idx_t in range(len(available_strategy_dict[comb[0]]['hist']))]
                         st_val = calc_rate_and_streaks(hits)
-                        
-                        # 抄底雷达指标：计算当前连黑期数 cl 与当前连红期数 cw
                         cl = 0
                         for h in reversed(hits):
                             if not h: cl += 1
@@ -1561,32 +1600,22 @@ if uploaded_file is not None:
                         for h in reversed(hits):
                             if h: cw += 1
                             else: break
-                        
-                        # 历史挂单后反弹胜率
                         after_1l = [hits[idx_t] for idx_t in range(1, len(hits)) if not hits[idx_t-1]]
                         reb_rate = (sum(after_1l) / len(after_1l) * 100) if after_1l else 0.0
 
-                        # 抄底均值回归综合评分 (dip_score)
                         base_qual = st_val['total_rate']
                         if base_qual < 65.0:
-                            dip_score = -999.0 # 排除胜率过低组合，防接飞刀
+                            dip_score = -999.0
                         else:
                             dip_score = base_qual
-                            if cl == 1: dip_score += 18.0   # 黄金 1 连黑回踩拐点
-                            elif cl == 2: dip_score += 25.0 # 极限 2 连黑铁底反弹
-                            elif cl == 3: dip_score += 5.0
-                            elif cl >= 4: dip_score -= 40.0 # 模型失效坠崖
-                            else:
-                                if cw == 1: dip_score += 12.0 # 探底刚反弹第一期，初生启动浪
-                                elif cw == 2: dip_score += 6.0 # 反弹延续浪
-                                elif cw >= 4: dip_score -= (cw - 3) * 5.0 # 高位透支疲劳预警
+                            if cl == 1: dip_score += 18.0
+                            elif cl == 2: dip_score += 25.0
+                            elif cw == 1: dip_score += 10.0
+                            elif cw >= 4: dip_score -= (cw - 3) * 5.0
 
-                        comp = st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
-
-                        title_str = " ∩ ".join(k.split(' ')[1] if len(k.split(' ')) > 1 else k for k in comb)
                         matched.append({
                             'keys': list(comb),
-                            'title': title_str,
+                            'title': " ∩ ".join(k.split(' ')[1] if len(k.split(' ')) > 1 else k for k in comb),
                             'full_title': " ∩ ".join(comb),
                             'size': sz,
                             'curr_kept': sorted(list(curr_inter)),
@@ -1596,12 +1625,12 @@ if uploaded_file is not None:
                             'cw': cw,
                             'reb_rate': reb_rate,
                             'dip_score': dip_score,
-                            'comp': comp
+                            'comp': st_val['r30_rate'] * 0.35 + st_val['r14_rate'] * 0.30 + st_val['total_rate'] * 0.20 + st_val['r7_rate'] * 0.15
                         })
 
             return matched
 
-        auto_matched_combos = scan_auto_recommended_combos(27, 28)
+        auto_matched_combos = scan_auto_recommended_combos(15, 38)
 
         # 表现优选导航菜单
         st_A = tier_stats["方案A (36码平衡型)"]
@@ -1755,10 +1784,10 @@ if uploaded_file is not None:
             ctrl_c1, ctrl_c2 = st.columns([2, 1])
             with ctrl_c1:
                 target_range = st.slider(
-                    "👉 自定义目标推荐码数区间：",
+                    "👉 自定义目标推荐码数区间（已放宽限制 · 优先保证方案完整性）：",
                     min_value=10,
-                    max_value=40,
-                    value=(27, 28),
+                    max_value=45,
+                    value=(20, 36),
                     step=1
                 )
             with ctrl_c2:
